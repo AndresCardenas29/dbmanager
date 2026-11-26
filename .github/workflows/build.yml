@@ -1,0 +1,61 @@
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows/amd64
+            artifact: dbmanager-windows-amd64
+            path: build/bin/dbmanager.exe
+            extra: ""
+          - os: macos-latest
+            platform: darwin/universal
+            artifact: dbmanager-macos-universal
+            path: build/bin/dbmanager.app
+            extra: ""
+          - os: ubuntu-24.04
+            platform: linux/amd64
+            artifact: dbmanager-linux-amd64
+            path: build/bin/dbmanager
+            extra: "-tags webkit2_41"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Dependencias de Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Instalar Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+
+      - name: Pruebas unitarias
+        run: go test ./...
+
+      - name: Compilar
+        run: wails build -clean -platform ${{ matrix.platform }} ${{ matrix.extra }}
+
+      - name: Empaquetar macOS
+        if: runner.os == 'macOS'
+        run: cd build/bin && ditto -c -k --keepParent dbmanager.app dbmanager-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.os == 'macOS' && 'build/bin/dbmanager-macos.zip' || matrix.path }}
