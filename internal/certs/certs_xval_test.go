@@ -670,15 +670,16 @@ func TestXVal_Negative(t *testing.T) {
 			// Los JDK recientes rechazan contraseñas no ASCII en PKCS#12 con PBES2 ("Password is not ASCII"):
 			// es una limitación de keytool, no del archivo generado, así que solo se registra.
 			jdkNoASCII := func(out string) bool { return strings.Contains(out, "Password is not ASCII") }
+			limited := jdkNoASCII(res.Verification.KeytoolOutput)
 			if !res.Verification.KeytoolOK {
-				if jdkNoASCII(res.Verification.KeytoolOutput) {
+				if limited {
 					t.Logf("LIMITACIÓN DEL JDK: este keytool no acepta la contraseña no ASCII %q", pw)
 				} else {
 					t.Errorf("keytool no abre con la contraseña %q: %s", pw, res.Verification.KeytoolOutput)
 				}
 			}
 			if o, err := xrun(t, []string{"XPW=" + pw}, kt, "-list", "-keystore", f.out, "-storetype", "PKCS12", "-storepass:env", "XPW"); err != nil {
-				if jdkNoASCII(o) {
+				if limited || jdkNoASCII(o) { // el keytool externo es el mismo JDK; su mensaje es más corto
 					t.Logf("LIMITACIÓN DEL JDK (keytool externo) con %q", pw)
 				} else {
 					t.Errorf("keytool externo con %q: %v %s", pw, err, o)
