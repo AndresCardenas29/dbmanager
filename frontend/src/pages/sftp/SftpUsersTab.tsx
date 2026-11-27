@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {KeyRound, Key, Plus, RefreshCw, Trash2, UserRound, Users} from 'lucide-react'
+import {FolderOpen, KeyRound, Key, Plus, RefreshCw, Trash2, UserRound, Users} from 'lucide-react'
 import {errMsg} from '../../api'
 import {api2, type SftpKey, type SftpService, type SftpUser, type SftpUserResult} from '../../api/v2'
 import {useAsync} from '../../hooks/useAsync'
@@ -15,6 +15,11 @@ const NAME_RE = /^[a-z_][a-z0-9_-]{0,31}$/
 export default function SftpUsersTab({svc}: {svc: SftpService}) {
   const toast = useToast()
   const users = useAsync(() => api2.listSftpUsers(svc.id), [svc.id])
+  const folders = useAsync(() => api2.listSftpFolders(svc.id), [svc.id])
+  const openUser = async (name: string) => {
+    try { const p = await api2.openSftpFolder(svc.id, 'user', name); toast.success(`Carpeta abierta: ${p}`) } catch (e) { toast.error(e) }
+  }
+  const accessOf = (u: string) => (folders.data ?? []).flatMap(f => (f.access ?? []).filter(a => a.user === u).map(a => ({folder: f.name, level: a.level})))
   const [creating, setCreating] = useState(false)
   const [result, setResult] = useState<SftpUserResult | null>(null)
   const [pwFor, setPwFor] = useState<SftpUser | null>(null)
@@ -36,13 +41,15 @@ export default function SftpUsersTab({svc}: {svc: SftpService}) {
         {users.data && rows.length === 0 && <EmptyState icon={<Users size={28}/>} title="No hay usuarios">Crea el primero para poder conectarte.</EmptyState>}
         {rows.length > 0 && (
           <Table>
-            <thead><tr><Th>Usuario</Th><Th>UID</Th><Th>Contraseña</Th><Th>Carpeta de subida</Th><Th>Llaves</Th><Th><span className="sr-only">Acciones</span></Th></tr></thead>
+            <thead><tr><Th>Usuario</Th><Th>UID</Th><Th>Contraseña</Th><Th>Carpeta de subida</Th><Th>Carpetas compartidas</Th><Th>Llaves</Th><Th><span className="sr-only">Acciones</span></Th></tr></thead>
             <tbody>{rows.map(u => (
               <tr key={u.name} className="align-top hover:bg-surface2/60">
                 <Td className="font-medium"><span className="inline-flex items-center gap-2"><UserRound size={14} className="text-muted"/>{u.name}</span></Td>
                 <Td>{u.uid}</Td>
                 <Td>{u.hasPassword ? <Badge tone="success">Sí</Badge> : <Badge>No</Badge>}</Td>
                 <Td className="font-mono text-xs">{u.uploadDir || '—'}</Td>
+                <Td>{accessOf(u.name).length === 0 ? <span className="text-muted">—</span> : (
+                  <div className="flex flex-wrap gap-1">{accessOf(u.name).map(a => <Badge key={a.folder} tone={a.level === 'readwrite' ? 'success' : 'warn'}>/{a.folder} · {a.level === 'readwrite' ? 'Lectura y escritura' : 'Solo lectura'}</Badge>)}</div>)}</Td>
                 <Td>{(u.keys ?? []).length === 0 ? <span className="text-muted">0</span> : (
                   <ul className="space-y-1">{(u.keys ?? []).map(k => (
                     <li key={k.id} className="flex items-center gap-1 text-xs">
@@ -50,7 +57,8 @@ export default function SftpUsersTab({svc}: {svc: SftpService}) {
                       <IconButton label={`Quitar llave ${k.comment || k.fingerprint}`} className="!h-6 !w-6" onClick={() => setRmKey({user: u, key: k})}><Trash2 size={12} className="text-danger"/></IconButton>
                     </li>))}</ul>)}</Td>
                 <Td><div className="flex justify-end">
-                  <IconButton label={`Contraseña de ${u.name}`} onClick={() => setPwFor(u)}><KeyRound size={15}/></IconButton>
+                  <IconButton label={`Abrir carpeta de ${u.name}`} onClick={() => openUser(u.name)}><FolderOpen size={15}/></IconButton>
+                  <Button size="sm" icon={<KeyRound size={14}/>} onClick={() => setPwFor(u)}>Cambiar contraseña</Button>
                   <IconButton label={`Añadir llave a ${u.name}`} onClick={() => setKeyFor(u)}><Key size={15}/></IconButton>
                   <IconButton label={`Eliminar ${u.name}`} onClick={() => { setDelFiles(false); setDropping(u) }}><Trash2 size={15} className="text-danger"/></IconButton>
                 </div></Td>
@@ -164,7 +172,7 @@ function ResultDialog({r, svc, onClose}: {r: SftpUserResult; svc: SftpService; o
   return (
     <Modal title={`Usuario «${r.user.name}» listo`} width="max-w-xl" onClose={onClose} footer={<Button variant="primary" onClick={onClose}>Entendido</Button>}>
       <div className="space-y-4 text-sm">
-        {r.privateKeyPath && <Notice tone="danger"><b>DB Manager no guarda la llave privada.</b> Cópiala ahora a un lugar seguro: si la pierdes tendrás que generar otra.</Notice>}
+        {r.privateKeyPath && <Notice tone="danger"><b>Andres Tools no guarda la llave privada.</b> Cópiala ahora a un lugar seguro: si la pierdes tendrás que generar otra.</Notice>}
         {rows.filter(([, v]) => v).map(([k, v]) => (
           <div key={k}><p className="text-xs text-muted">{k}</p>
             <div className="flex items-center gap-2 rounded-md border border-line bg-surface2 px-3 py-1.5"><code className="min-w-0 flex-1 break-all font-mono text-xs">{v}</code><CopyButton text={v}/></div></div>

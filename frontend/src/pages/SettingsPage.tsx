@@ -4,8 +4,44 @@ import {api} from '../api'
 import {useApp} from '../store'
 import {useAsync} from '../hooks/useAsync'
 import {useToast} from '../components/Toast'
-import {Button, Card, ErrorBanner, Field, Input, PageHeader, Select, Spinner, Table, Td, Th} from '../components/ui'
+import {Button, Card, ErrorBanner, Field, Input, Notice, PageHeader, PasswordInput, Select, Spinner, Table, Td, Th} from '../components/ui'
 import type {ThemePref} from '../hooks/useTheme'
+
+// Usuario root predeterminado: el administrador que Andres Tools crea en cada servicio nuevo.
+function RootDefaultsCard() {
+  const toast = useToast()
+  const defs = useAsync(() => api.getRootDefaults(), [])
+  const [user, setUser] = useState('')
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { if (defs.data) setUser(defs.data.user) }, [defs.data])
+  const mismatch = pw !== pw2
+
+  const save = async () => {
+    setSaving(true)
+    try { await api.setRootDefaults(user.trim(), pw); toast.success('Usuario root predeterminado guardado.'); setPw(''); setPw2(''); await defs.reload() }
+    catch (e) { toast.error(e) } finally { setSaving(false) }
+  }
+  return (
+    <Card title="Usuario root predeterminado">
+      <p className="mb-3 text-sm text-muted">
+        Al crear un servicio, Andres Tools crea este usuario como administrador total y lo usa para gestionarlo (usuarios, bases y permisos).
+        Solo afecta a los servicios nuevos; para uno existente, usa la pestaña Configuración del servidor.
+      </p>
+      <ErrorBanner message={defs.error} onRetry={() => void defs.reload()}/>
+      {defs.data?.passwordIsDefault && <div className="mb-3"><Notice tone="warn">La contraseña sigue siendo la predeterminada («root»). Cámbiala si el servicio será accesible desde la red.</Notice></div>}
+      <form className="grid gap-4 sm:grid-cols-3" onSubmit={e => { e.preventDefault(); if (!mismatch && user.trim()) void save() }}>
+        <Field label="Usuario">{id => <Input id={id} value={user} autoComplete="off" onChange={e => setUser(e.target.value)}/>}</Field>
+        <Field label="Nueva contraseña" hint="Vacía = conservar la actual.">{id => <PasswordInput id={id} value={pw} onChange={setPw}/>}</Field>
+        <Field label="Confirmar contraseña" error={pw2 && mismatch ? 'No coinciden.' : ''}>{id => <PasswordInput id={id} value={pw2} onChange={setPw2}/>}</Field>
+        <div className="flex justify-end sm:col-span-3">
+          <Button type="submit" variant="primary" icon={<Save size={15}/>} loading={saving} disabled={mismatch || !user.trim()}>Guardar</Button>
+        </div>
+      </form>
+    </Card>
+  )
+}
 
 export default function SettingsPage() {
   const toast = useToast()
@@ -45,6 +81,7 @@ export default function SettingsPage() {
             </div>}
           </Field>
         </Card>
+        <RootDefaultsCard/>
         <Card title="Todos los ajustes guardados">
           <ErrorBanner message={settings.error} onRetry={() => void settings.reload()}/>
           {settings.loading && !settings.data && <Spinner/>}

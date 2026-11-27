@@ -179,6 +179,28 @@ var migrations = []string{
 		verified INTEGER NOT NULL DEFAULT 0,
 		created_at TEXT NOT NULL
 	);`,
+	// 4: contraseñas (cifradas AES-GCM) de los logins creados desde la app, para copiar cadenas de conexión.
+	`CREATE TABLE login_secrets (
+		server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+		login TEXT NOT NULL COLLATE NOCASE,
+		password_enc TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(server_id, login)
+	);`,
+	// 5: carpetas compartidas de SFTP y acceso por usuario (read | readwrite).
+	`CREATE TABLE sftp_folders (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		service_id INTEGER NOT NULL REFERENCES sftp_services(id) ON DELETE CASCADE,
+		name TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		UNIQUE(service_id, name)
+	);
+	CREATE TABLE sftp_folder_access (
+		folder_id INTEGER NOT NULL REFERENCES sftp_folders(id) ON DELETE CASCADE,
+		user_id INTEGER NOT NULL REFERENCES sftp_users(id) ON DELETE CASCADE,
+		level TEXT NOT NULL,
+		PRIMARY KEY(folder_id, user_id)
+	);`,
 }
 
 func (s *Store) migrate() error {

@@ -89,13 +89,23 @@ func UsersConf(users []UserCfg) string {
 
 // HookScript genera /etc/sftp.d/10-persist-host-keys.sh: restaura las llaves de host persistidas
 // (la app las genera una vez) y ajusta propietarios de las carpetas de carga. Líneas LF.
-func HookScript(users []UserCfg) string {
+func HookScript(users []UserCfg) string { return HookScriptShared(users, nil) }
+
+// HookScriptShared es HookScript más el ajuste de permisos de las carpetas compartidas de lectura-escritura
+// (grupo 100 con setgid para que todos los usuarios puedan escribir). Las de solo lectura se omiten.
+func HookScriptShared(users []UserCfg, shared []SharedMount) string {
 	var sb strings.Builder
-	sb.WriteString("#!/bin/sh\n# Generado por DB Manager. No editar.\n")
+	sb.WriteString("#!/bin/sh\n# Generado por Andres Tools. No editar.\n")
 	sb.WriteString("if ls /etc/sftp-keys/ssh_host_* >/dev/null 2>&1; then\n  cp /etc/sftp-keys/ssh_host_* /etc/ssh/\nelse\n  cp /etc/ssh/ssh_host_* /etc/sftp-keys/ 2>/dev/null || true\nfi\n")
 	sb.WriteString("chmod 600 /etc/ssh/ssh_host_*_key 2>/dev/null || true\nchmod 644 /etc/ssh/ssh_host_*.pub 2>/dev/null || true\n")
 	for _, u := range users {
 		fmt.Fprintf(&sb, "chown -R %d:%d \"/home/%s/%s\" 2>/dev/null || true\n", u.UID, DefaultGID, u.Name, u.UploadDir)
+	}
+	for _, s := range shared {
+		if s.ReadOnly {
+			continue
+		}
+		fmt.Fprintf(&sb, "chown root:%d \"/home/%s/%s\" 2>/dev/null || true\nchmod 2775 \"/home/%s/%s\" 2>/dev/null || true\n", DefaultGID, s.User, s.Folder, s.User, s.Folder)
 	}
 	return sb.String()
 }

@@ -13,18 +13,18 @@ jobs:
         include:
           - os: windows-latest
             platform: windows/amd64
-            artifact: dbmanager-windows-amd64
-            path: build/bin/dbmanager.exe
+            artifact: andres-tools-windows-amd64
+            path: build/bin/andres-tools.exe
             extra: ""
           - os: macos-latest
             platform: darwin/universal
-            artifact: dbmanager-macos-universal
-            path: build/bin/dbmanager.app
+            artifact: andres-tools-macos-universal
+            path: build/bin/andres-tools.app
             extra: ""
           - os: ubuntu-24.04
             platform: linux/amd64
-            artifact: dbmanager-linux-amd64
-            path: build/bin/dbmanager
+            artifact: andres-tools-linux-amd64
+            path: build/bin/andres-tools
             extra: "-tags webkit2_41"
     runs-on: ${{ matrix.os }}
     steps:
@@ -53,9 +53,9 @@ jobs:
 
       - name: Empaquetar macOS
         if: runner.os == 'macOS'
-        run: cd build/bin && ditto -c -k --keepParent dbmanager.app dbmanager-macos.zip
+        run: cd build/bin && ditto -c -k --keepParent andres-tools.app andres-tools-macos.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ runner.os == 'macOS' && 'build/bin/dbmanager-macos.zip' || matrix.path }}
+          path: ${{ runner.os == 'macOS' && 'build/bin/andres-tools-macos.zip' || matrix.path }}

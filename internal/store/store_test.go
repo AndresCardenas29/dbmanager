@@ -176,3 +176,65 @@ func TestBackupsRestoresOperations(t *testing.T) {
 		t.Fatalf("ops=%+v err=%v", ops, err)
 	}
 }
+
+func TestSftpFolders(t *testing.T) {
+	s := newTestStore(t)
+	svc, err := s.CreateSftpService(SftpService{Name: "s", Mode: "managed", ContainerName: "c", Image: "i", DataMode: "volume", DataPath: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u1, err := s.CreateSftpUser(SftpUser{ServiceID: svc.ID, Name: "alice", UploadDir: "upload"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u2, _ := s.CreateSftpUser(SftpUser{ServiceID: svc.ID, Name: "bob", UploadDir: "upload"})
+	f, err := s.CreateSftpFolder(svc.ID, "docs")
+	if err != nil || f.ID == 0 {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateSftpFolder(svc.ID, "docs"); err == nil {
+		t.Fatal("duplicado debe fallar")
+	}
+	if g, err := s.GetSftpFolder(svc.ID, "docs"); err != nil || g.ID != f.ID {
+		t.Fatal(err)
+	}
+	if _, err := s.GetSftpFolder(svc.ID, "zzz"); err != ErrNotFound {
+		t.Fatalf("esperaba ErrNotFound: %v", err)
+	}
+	if err := s.SetSftpFolderAccess(f.ID, u1.ID, "readwrite"); err != nil {
+		t.Fatal(err)
+	}
+	s.SetSftpFolderAccess(f.ID, u2.ID, "read")
+	s.SetSftpFolderAccess(f.ID, u1.ID, "read") // upsert
+	acc, err := s.ListSftpFolderAccess(svc.ID)
+	if err != nil || len(acc) != 2 || acc[0].UserName != "alice" || acc[0].Level != "read" || acc[1].UserName != "bob" {
+		t.Fatalf("%+v %v", acc, err)
+	}
+	if s.SetSftpFolderAccess(f.ID, u1.ID, "bogus") == nil {
+		t.Fatal("nivel inválido")
+	}
+	s.SetSftpFolderAccess(f.ID, u1.ID, "none")
+	if acc, _ = s.ListSftpFolderAccess(svc.ID); len(acc) != 1 {
+		t.Fatalf("%+v", acc)
+	}
+	// borrar usuario: cascade
+	if err := s.DeleteSftpUser(u2.ID); err != nil {
+		t.Fatal(err)
+	}
+	if acc, _ = s.ListSftpFolderAccess(svc.ID); len(acc) != 0 {
+		t.Fatalf("cascade usuario: %+v", acc)
+	}
+	s.SetSftpFolderAccess(f.ID, u1.ID, "read")
+	if err := s.DeleteSftpFolder(f.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fs, _ := s.ListSftpFolders(svc.ID); len(fs) != 0 {
+		t.Fatal("no se borró")
+	}
+	if acc, _ = s.ListSftpFolderAccess(svc.ID); len(acc) != 0 {
+		t.Fatal("cascade carpeta")
+	}
+	if s.DeleteSftpFolder(f.ID) != ErrNotFound {
+		t.Fatal("ErrNotFound")
+	}
+}

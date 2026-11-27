@@ -191,8 +191,9 @@ type CreateOptions struct {
 
 // VolumeMount es un volumen con nombre montado en Target.
 type VolumeMount struct {
-	Name   string
-	Target string
+	Name     string
+	Target   string
+	ReadOnly bool
 }
 
 // Bind es un montaje de carpeta del host.
@@ -233,7 +234,7 @@ func (c *Client) CreateContainer(ctx context.Context, o CreateOptions) (string, 
 		hc.PortBindings = nat.PortMap{p: []nat.PortBinding{{HostIP: bindIP, HostPort: hp}}}
 	}
 	for _, v := range o.Volumes {
-		hc.Mounts = append(hc.Mounts, mount.Mount{Type: mount.TypeVolume, Source: v.Name, Target: v.Target})
+		hc.Mounts = append(hc.Mounts, mount.Mount{Type: mount.TypeVolume, Source: v.Name, Target: v.Target, ReadOnly: v.ReadOnly})
 	}
 	for _, b := range o.Binds {
 		hc.Mounts = append(hc.Mounts, mount.Mount{Type: mount.TypeBind, Source: b.Source, Target: b.Target, ReadOnly: b.ReadOnly})

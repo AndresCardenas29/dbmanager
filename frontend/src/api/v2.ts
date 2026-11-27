@@ -27,6 +27,11 @@ export const api2 = {
   setSftpPassword: (id: number, name: string, pw: string) => G.SetSftpUserPassword(id, name, pw),
   addSftpKey: (id: number, name: string, r: V.SftpKeyRequest) => x<V.SftpUserResult>(G.AddSftpUserKey(id, name, a(r))),
   removeSftpKey: (id: number, name: string, keyId: number) => G.RemoveSftpUserKey(id, name, keyId),
+  listSftpFolders: async (id: number) => (await x<V.SftpFolder[] | null>(G.ListSftpFolders(id))) ?? [],
+  createSftpFolder: (id: number, name: string) => G.CreateSftpFolder(id, name),
+  deleteSftpFolder: (id: number, name: string, files: boolean) => G.DeleteSftpFolder(id, name, files),
+  setSftpFolderAccess: (id: number, folder: string, user: string, level: V.SftpFolderLevel) => G.SetSftpFolderAccess(id, folder, user, level),
+  openSftpFolder: (id: number, kind: 'service' | 'user' | 'folder', name: string) => G.OpenSftpFolder(id, kind, name),
   testSftpLogin: (r: V.SftpLoginTest) => x<V.SftpLoginResult>(G.TestSftpLogin(a(r))),
 
   inspectCert: (path: string, pass: string) => x<V.CertFileInfo>(G.InspectCertFile(path, pass)),

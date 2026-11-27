@@ -215,16 +215,16 @@ func hostPortFree(p int) bool {
 func volumeName(svc store.SftpService, user string) string { return svc.DataPath + "-" + user }
 
 // buildConfig reconstruye la configuración en disco a partir de la base de datos y devuelve usuarios.
-func (m *Manager) buildConfig(svc store.SftpService) ([]UserCfg, ConfigPaths, error) {
+func (m *Manager) buildConfig(svc store.SftpService) ([]UserCfg, []SharedMount, ConfigPaths, error) {
 	us, err := m.Store.ListSftpUsers(svc.ID)
 	if err != nil {
-		return nil, ConfigPaths{}, err
+		return nil, nil, ConfigPaths{}, err
 	}
 	var cfgs []UserCfg
 	for _, u := range us {
 		ks, err := m.Store.ListSftpKeys(u.ID)
 		if err != nil {
-			return nil, ConfigPaths{}, err
+			return nil, nil, ConfigPaths{}, err
 		}
 		c := UserCfg{Name: u.Name, UID: u.UID, PasswordHash: u.PasswordHash, UploadDir: u.UploadDir}
 		for _, k := range ks {
@@ -232,8 +232,12 @@ func (m *Manager) buildConfig(svc store.SftpService) ([]UserCfg, ConfigPaths, er
 		}
 		cfgs = append(cfgs, c)
 	}
-	p, err := WriteConfig(m.baseOf(svc.ID), cfgs)
-	return cfgs, p, err
+	shared, err := m.sharedMounts(svc.ID)
+	if err != nil {
+		return nil, nil, ConfigPaths{}, err
+	}
+	p, err := WriteConfigShared(m.baseOf(svc.ID), cfgs, shared)
+	return cfgs, shared, p, err
 }
 
 // recreateLocked regenera la configuración y recrea el contenedor (atmoz solo lee users.conf al primer arranque).
@@ -241,7 +245,7 @@ func (m *Manager) recreateLocked(ctx context.Context, cli *dockerx.Client, svc s
 	if svc.Mode != "managed" {
 		return errors.New("los servicios importados no se pueden reconfigurar desde la app")
 	}
-	cfgs, p, err := m.buildConfig(svc)
+	cfgs, shared, p, err := m.buildConfig(svc)
 	if err != nil {
 		return err
 	}
@@ -268,6 +272,18 @@ func (m *Manager) recreateLocked(ctx context.Context, cli *dockerx.Client, svc s
 			opts.Volumes = append(opts.Volumes, dockerx.VolumeMount{Name: volumeName(svc, u.Name), Target: target})
 		}
 	}
+	if svc.DataMode == "bind" {
+		for _, s := range shared {
+			src := SharedHostDir(svc.DataPath, s.Folder)
+			if err := os.MkdirAll(src, 0o777); err != nil {
+				return fmt.Errorf("no se pudo crear la carpeta %s: %w", src, err)
+			}
+			os.Chmod(src, 0o777)
+		}
+	}
+	sb, sv := BuildSharedMounts(svc.DataMode, svc.DataPath, shared)
+	opts.Binds = append(opts.Binds, sb...)
+	opts.Volumes = append(opts.Volumes, sv...)
 	if _, err := cli.Inspect(ctx, svc.ContainerName); err == nil {
 		if err := cli.Remove(ctx, svc.ContainerName, false); err != nil && !dockerx.IsNotFound(err) {
 			return fmt.Errorf("no se pudo eliminar el contenedor anterior: %w", err)

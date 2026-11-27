@@ -3,6 +3,7 @@ import {ArrowLeft, ArrowRight, Check, Database, FolderOpen, Rocket} from 'lucide
 import {api, errMsg, type Engine} from '../api'
 import {useApp} from '../store'
 import {useProgress} from '../hooks/useProgress'
+import {useAsync} from '../hooks/useAsync'
 import {useToast} from '../components/Toast'
 import {Button, Card, Checkbox, cx, engineLabel, ErrorBanner, Field, Input, Notice, PageHeader, PasswordInput, ProgressBar, Select} from '../components/ui'
 
@@ -62,6 +63,12 @@ export default function NewServicePage() {
   const [edition, setEdition] = useState('Developer')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const rootDefaults = useAsync(() => api.getRootDefaults(), [])
+  const [rootUser, setRootUser] = useState('')
+  const [rootPassword, setRootPassword] = useState('')
+  const effectiveRoot = rootUser.trim() || rootDefaults.data?.user || 'root'
+  const reserved = engine === 'mssql' ? /^(sa|##.*|nt .*)$/i : /^(postgres|pg_.*)$/i
+  const rootOk = /^[A-Za-z_][A-Za-z0-9_-]{0,62}$/.test(effectiveRoot) && !reserved.test(effectiveRoot)
 
   const portNum = port.trim() === '' ? 0 : Number(port)
   const portOk = port.trim() === '' || (Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535)
@@ -70,7 +77,7 @@ export default function NewServicePage() {
   const nameOk = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/.test(name)
   const pw = passwordStrength(engine, password)
 
-  const valid = [true, nameOk && image.trim() !== '' && portOk && memOk, pw.ok && (dataMode === 'volume' || dataPath !== ''), true]
+  const valid = [true, nameOk && image.trim() !== '' && portOk && memOk, pw.ok && rootOk && (dataMode === 'volume' || dataPath !== ''), true]
 
   const chooseEngine = (e: Engine) => { setEngine(e); setImage(PRESETS[e][0].image); setCustom(false) }
   const pick = async () => {
@@ -83,6 +90,7 @@ export default function NewServicePage() {
       const s = await api.createLocalService({
         name: name.trim(), engine, image: image.trim(), port: portNum, adminPassword: password,
         dataMode, dataPath: dataMode === 'bind' ? dataPath : dataPath.trim(), memoryMB: memNum, requestId, exposeOnNetwork: expose, edition: engine === 'mssql' ? edition : '',
+        rootUser: rootUser.trim(), rootPassword,
       })
       toast.success(`Servicio «${s.name}» creado.`)
       await refresh()
@@ -153,9 +161,22 @@ export default function NewServicePage() {
           </>}
 
           {step === 2 && <>
-            <Field label={`Contraseña del administrador (${engine === 'mssql' ? 'sa' : 'postgres'})`}>
+            <Field label={`Contraseña del superusuario del motor (${engine === 'mssql' ? 'sa' : 'postgres'})`}
+              hint="La pide el motor al crear el contenedor. Andres Tools no la usa después: se conecta con el usuario root.">
               {id => <><PasswordInput id={id} autoFocus value={password} onChange={setPassword}/><StrengthMeter engine={engine} pw={password}/></>}
             </Field>
+            <div className="grid gap-4 rounded-md border border-line p-3 sm:grid-cols-2">
+              <p className="text-xs text-muted sm:col-span-2">
+                <b className="text-fg">Usuario root:</b> administrador total que Andres Tools crea y usa para gestionar el servicio
+                (acceso a todas las bases). Puedes cambiarlo después en la pestaña Configuración del servidor.
+              </p>
+              <Field label="Usuario root" error={!rootOk ? 'Nombre no válido o reservado.' : ''}>
+                {id => <Input id={id} value={rootUser} autoComplete="off" onChange={e => setRootUser(e.target.value)} placeholder={rootDefaults.data?.user ?? 'root'}/>}
+              </Field>
+              <Field label="Contraseña root" hint={rootDefaults.data?.passwordIsDefault ? 'Vacía = «root» (predeterminada en Ajustes).' : 'Vacía = la predeterminada de Ajustes.'}>
+                {id => <PasswordInput id={id} value={rootPassword} onChange={setRootPassword}/>}
+              </Field>
+            </div>
             <fieldset>
               <legend className="mb-1 text-xs font-medium text-muted">Almacenamiento de datos</legend>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -189,7 +210,8 @@ export default function NewServicePage() {
               <dt className="text-muted">Puerto</dt><dd>{portNum || 'Automático'}</dd>
               <dt className="text-muted">Acceso</dt><dd>{expose ? 'Toda la red local' : 'Solo este equipo (127.0.0.1)'}</dd>
               <dt className="text-muted">Memoria</dt><dd>{memNum ? `${memNum} MB` : 'Sin límite'}</dd>
-              <dt className="text-muted">Contraseña</dt><dd>{'•'.repeat(Math.min(password.length, 16))}</dd>
+              <dt className="text-muted">Contraseña {engine === 'mssql' ? 'sa' : 'postgres'}</dt><dd>{'•'.repeat(Math.min(password.length, 16))}</dd>
+              <dt className="text-muted">Usuario root</dt><dd className="font-mono text-xs leading-5">{effectiveRoot}</dd>
               <dt className="text-muted">Datos</dt><dd>{dataMode === 'volume' ? `Volumen de Docker${dataPath ? ` (${dataPath})` : ''}` : `Carpeta: ${dataPath}`}</dd>
             </dl>
             <p className="text-xs text-muted">La primera vez se descargará la imagen, lo que puede tardar varios minutos.</p>

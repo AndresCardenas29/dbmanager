@@ -21,7 +21,7 @@ export default function HistoryPage() {
 
   return (
     <div>
-      <PageHeader title="Historial" subtitle="Registro de operaciones realizadas desde DB Manager."
+      <PageHeader title="Historial" subtitle="Registro de operaciones realizadas desde Andres Tools."
         actions={<Button icon={<RefreshCw size={15}/>} loading={ops.loading} onClick={() => void ops.reload()}>Actualizar</Button>}/>
       <Card>
         <div className="mb-4 grid gap-3 sm:grid-cols-4">

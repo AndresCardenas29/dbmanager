@@ -191,6 +191,13 @@ func (m *Manager) CreateUser(ctx context.Context, serviceID int64, r UserRequest
 	if err := ValidUploadDir(r.UploadDir); err != nil {
 		return UserResult{}, err
 	}
+	folders, err := m.Store.ListSftpFolders(serviceID)
+	if err != nil {
+		return UserResult{}, err
+	}
+	if err := checkUserVsFolders(r.Name, r.UploadDir, folders); err != nil {
+		return UserResult{}, err
+	}
 	if r.Password == "" && r.Key == nil {
 		return UserResult{}, errors.New("indique una contraseña, una llave, o ambas (sin ninguna el usuario no podría entrar)")
 	}

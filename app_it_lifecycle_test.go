@@ -63,8 +63,11 @@ func TestLocalServiceLifecycle(t *testing.T) {
 		t.Fatalf("CreateLocalService: %v", err)
 	}
 	if sv.ContainerName != cname || sv.Mode != "local" || sv.Engine != "postgres" || sv.DataMode != "volume" || sv.DataPath != vol ||
-		!sv.HasPassword || sv.AdminUser != "postgres" || sv.Port < 54321 {
-		t.Errorf("servidor creado: %+v", sv)
+		!sv.HasPassword || sv.AdminUser != "root" || sv.Port < 54321 {
+		t.Errorf("servidor creado (se espera el usuario root predeterminado): %+v", sv)
+	}
+	if st, err := a.GetRootStatus(sv.ID); err != nil || !st.IsAdmin {
+		t.Errorf("el usuario root del servicio nuevo debe ser administrador: %+v %v", st, err)
 	}
 	noSecret(t, "Server", mustJSON(t, sv), pw)
 	// eventos: todos con requestId; porcentajes no decrecientes; último Done

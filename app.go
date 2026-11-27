@@ -485,8 +485,19 @@ func (a *App) GetSettings() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return st.GetSettings()
+	all, err := st.GetSettings()
+	if err != nil {
+		return nil, err
+	}
+	for k := range all {
+		if isSecretSetting(k) {
+			delete(all, k) // los secretos cifrados no salen hacia el frontend
+		}
+	}
+	return all, nil
 }
+
+func isSecretSetting(key string) bool { return strings.HasSuffix(key, "Enc") }
 
 func (a *App) SetSetting(key string, value string) error {
 	st, err := a.db()
@@ -495,6 +506,12 @@ func (a *App) SetSetting(key string, value string) error {
 	}
 	if strings.TrimSpace(key) == "" {
 		return errors.New("la clave del ajuste es obligatoria")
+	}
+	if isSecretSetting(key) {
+		return errors.New("este ajuste solo se puede cambiar desde su sección de Ajustes")
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "mcp") {
+		return errors.New("los ajustes de MCP solo se cambian desde Andres Tools > MCP")
 	}
 	return st.SetSetting(key, value)
 }

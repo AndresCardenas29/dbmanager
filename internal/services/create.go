@@ -28,6 +28,10 @@ type CreateRequest struct {
 	MemoryMB        int
 	ExposeOnNetwork bool   // publicar en 0.0.0.0 (por defecto solo 127.0.0.1)
 	Edition         string // mssql: Developer | Express ... (MSSQL_PID)
+	// RootUser / RootPassword: usuario administrador que se crea en el motor y con el que DB Manager
+	// se conecta desde entonces. Los resuelve el llamador (Ajustes > root predeterminado).
+	RootUser     string
+	RootPassword string
 }
 
 // ValidMSSQLEdition indica si la edición (MSSQL_PID) está permitida.
@@ -71,6 +75,16 @@ func (r *CreateRequest) Validate() error {
 		}
 	default:
 		return errors.New("motor inválido: use mssql o postgres")
+	}
+	r.RootUser = strings.TrimSpace(r.RootUser)
+	if r.RootUser == "" {
+		r.RootUser = store.DefaultRootUser
+	}
+	if r.RootPassword == "" {
+		r.RootPassword = store.DefaultRootPassword
+	}
+	if err := ValidateRootUser(r.Engine, r.RootUser); err != nil {
+		return err
 	}
 	if strings.ContainsAny(r.Image, " \t\n") {
 		return errors.New("imagen inválida")
@@ -295,7 +309,17 @@ func (s *Services) CreateLocal(ctx context.Context, r CreateRequest) (store.Serv
 		return store.Server{}, leave(err)
 	}
 
-	created, err := s.Store.CreateServer(sv, r.AdminPassword)
+	// Usuario root: administrador propio de DB Manager, así no depende de sa/postgres ni de logins sin permisos.
+	s.progress(rid, 0, 96, "Creando el usuario root "+r.RootUser)
+	if err := eng.EnsureAdminLogin(ctx, r.RootUser, r.RootPassword); err != nil {
+		return store.Server{}, leave(fmt.Errorf("no se pudo crear el usuario root %q: %s", r.RootUser, CleanErr(err)))
+	}
+	sv.AdminUser = r.RootUser
+	if err := s.verifyAdmin(ctx, sv, r.RootPassword); err != nil {
+		return store.Server{}, leave(err)
+	}
+
+	created, err := s.Store.CreateServer(sv, r.RootPassword)
 	if err != nil {
 		return store.Server{}, leave(fmt.Errorf("no se pudo guardar el servicio: %w", err))
 	}

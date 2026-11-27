@@ -270,3 +270,107 @@ func (s *Store) ListCertHistory(limit int) ([]CertHistory, error) {
 	}
 	return out, rows.Err()
 }
+
+// ---------- carpetas compartidas ----------
+
+// SftpFolder es una carpeta compartida de un servicio SFTP gestionado.
+type SftpFolder struct {
+	ID        int64
+	ServiceID int64
+	Name      string
+	CreatedAt time.Time
+}
+
+// SftpFolderAccess es el nivel de acceso ("read" | "readwrite") de un usuario a una carpeta.
+type SftpFolderAccess struct {
+	FolderID int64
+	UserID   int64
+	UserName string
+	Level    string
+}
+
+func (s *Store) CreateSftpFolder(serviceID int64, name string) (SftpFolder, error) {
+	ts := now()
+	res, err := s.db.Exec(`INSERT INTO sftp_folders(service_id,name,created_at) VALUES(?,?,?)`, serviceID, name, ts)
+	if err != nil {
+		return SftpFolder{}, err
+	}
+	id, _ := res.LastInsertId()
+	return SftpFolder{ID: id, ServiceID: serviceID, Name: name, CreatedAt: parseTime(ts)}, nil
+}
+
+func (s *Store) ListSftpFolders(serviceID int64) ([]SftpFolder, error) {
+	rows, err := s.db.Query(`SELECT id,service_id,name,created_at FROM sftp_folders WHERE service_id=? ORDER BY name COLLATE NOCASE`, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SftpFolder{}
+	for rows.Next() {
+		var f SftpFolder
+		var c string
+		if err := rows.Scan(&f.ID, &f.ServiceID, &f.Name, &c); err != nil {
+			return nil, err
+		}
+		f.CreatedAt = parseTime(c)
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetSftpFolder(serviceID int64, name string) (SftpFolder, error) {
+	var f SftpFolder
+	var c string
+	err := s.db.QueryRow(`SELECT id,service_id,name,created_at FROM sftp_folders WHERE service_id=? AND name=?`, serviceID, name).
+		Scan(&f.ID, &f.ServiceID, &f.Name, &c)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SftpFolder{}, ErrNotFound
+	}
+	f.CreatedAt = parseTime(c)
+	return f, err
+}
+
+func (s *Store) DeleteSftpFolder(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM sftp_folders WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetSftpFolderAccess fija el acceso; level "none" elimina la fila.
+func (s *Store) SetSftpFolderAccess(folderID, userID int64, level string) error {
+	switch level {
+	case "none":
+		_, err := s.db.Exec(`DELETE FROM sftp_folder_access WHERE folder_id=? AND user_id=?`, folderID, userID)
+		return err
+	case "read", "readwrite":
+		_, err := s.db.Exec(`INSERT INTO sftp_folder_access(folder_id,user_id,level) VALUES(?,?,?)
+			ON CONFLICT(folder_id,user_id) DO UPDATE SET level=excluded.level`, folderID, userID, level)
+		return err
+	}
+	return errors.New("nivel de acceso inválido")
+}
+
+// ListSftpFolderAccess lista el acceso de todas las carpetas del servicio, con el nombre de usuario.
+func (s *Store) ListSftpFolderAccess(serviceID int64) ([]SftpFolderAccess, error) {
+	rows, err := s.db.Query(`SELECT a.folder_id,a.user_id,u.name,a.level FROM sftp_folder_access a
+		JOIN sftp_folders f ON f.id=a.folder_id JOIN sftp_users u ON u.id=a.user_id
+		WHERE f.service_id=? ORDER BY f.name COLLATE NOCASE, u.name`, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SftpFolderAccess{}
+	for rows.Next() {
+		var a SftpFolderAccess
+		if err := rows.Scan(&a.FolderID, &a.UserID, &a.UserName, &a.Level); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}

@@ -1,4 +1,5 @@
-import {Database, FileKey, FolderSync, History, Home, Import, Moon, Plus, Settings, Sun, Globe, Monitor, ShieldCheck, ListChecks} from 'lucide-react'
+import {Database, FileKey, FolderSync, History, Home, Import, Moon, Plus, Settings, Sun, Globe, Monitor, ShieldCheck, ListChecks, Bot} from 'lucide-react'
+import brand from '../assets/brand.png'
 import type {ReactNode} from 'react'
 import {useApp} from '../store'
 import {Badge, cx, engineLabel, IconButton} from './ui'
@@ -68,7 +69,7 @@ export default function Sidebar() {
     <aside className="flex h-full w-72 shrink-0 flex-col border-r border-line bg-surface">
       <div className="flex items-center justify-between px-4 py-3">
         <button onClick={() => go({page: 'home'})} className="flex items-center gap-2 font-semibold">
-          <Database size={20} className="text-accent"/> DB Manager
+          <img src={brand} alt="" className="h-[22px] w-[22px] rounded-full"/> Andres Tools
         </button>
         <IconButton label={`Tema: ${theme === 'system' ? 'automático' : theme === 'dark' ? 'oscuro' : 'claro'} (cambiar)`}
           onClick={() => setTheme(next)}>
@@ -110,10 +111,14 @@ export default function Sidebar() {
           </Section>
         </div>
       </nav>
-      <div className="flex gap-1 border-t border-line p-2">
+      <div className="border-t border-line p-2 pb-0">
+        <NavBtn active={view.page === 'mcp'} onClick={() => go({page: 'mcp'})} icon={<Bot size={16}/>}>MCP</NavBtn>
+      </div>
+      <div className="flex gap-1 p-2">
         <NavBtn active={view.page === 'history'} onClick={() => go({page: 'history'})} icon={<History size={16}/>}>Historial</NavBtn>
         <NavBtn active={view.page === 'settings'} onClick={() => go({page: 'settings'})} icon={<Settings size={16}/>}>Ajustes</NavBtn>
       </div>
+      <p className="border-t border-line px-4 py-2 text-center text-[11px] text-muted">Creado por <span className="font-medium text-fg">Andres Cardenas</span></p>
     </aside>
   )
 }

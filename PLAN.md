@@ -71,7 +71,7 @@ dbmanager/
 - **Nunca** concatenar nombres sin escapar. mssql: `[nombre]` duplicando `]`; postgres: `pgx.Identifier{}.Sanitize()`.
 - Validar nombres de BD/usuarios: `^[A-Za-z_][A-Za-z0-9_\-]{0,127}$` (postgres ≤ 63).
 - Contraseñas en literales SQL (CREATE LOGIN / ALTER ROLE no aceptan parámetros): escapar `'` → `''`. Nunca loguearlas.
-- Contraseñas guardadas en SQLite **cifradas** con AES-GCM; nunca se devuelven al frontend (solo `hasPassword: bool`).
+- Contraseñas guardadas en SQLite **cifradas** con AES-GCM; nunca se devuelven al frontend (solo `hasPassword: bool`). **Única excepción deliberada**: `GetLoginPassword` (copiar cadenas de conexión con contraseña; la UI la muestra enmascarada). Las contraseñas de los logins creados desde la app se guardan cifradas en `login_secrets`.
 - Las pruebas de integración usan contenedores **temporales propios** con nombres `dbmanager-test-*` y puertos libres;
   **jamás** tocar el contenedor existente `sqlserver-apimanager` ni sus bases (APIManager, iflowdb, iflow_test).
 
@@ -112,7 +112,28 @@ DropLogin(serverId int64, name string) error
 ChangePassword(serverId int64, name string, password string) error
 SetServerRoles(serverId int64, name string, roles []string) error
 GetPermissionMatrix(serverId int64) (PermissionMatrix, error)  // {logins[], databases[], cells:[{login, database, level}]}
-SetDatabaseAccess(serverId int64, login string, database string, level string) error  // owner|readwrite|readonly|none
+SetDatabaseAccess(serverId int64, login string, database string, level string) error  // owner|readwrite|readonly|custom|none (custom = conecta sin roles globales; solo permisos por esquema/tabla)
+CreateDatabaseUser(serverId int64, database string, req CreateLoginRequest, level string) error // login sin roles de servidor, acceso solo a esa base
+
+// Esquemas y permisos por esquema/tabla (privilegios gestionados: SELECT, INSERT, UPDATE, DELETE, EXECUTE, ALTER; EXECUTE solo a nivel de esquema)
+ListSchemas(serverId int64, database string) ([]SchemaInfo, error)       // {name, owner, tables[], system}; tables nunca null
+CreateSchema(serverId int64, database string, name string) error
+ListObjectGrants(serverId int64, database string) ([]ObjectGrant, error) // {login, schema, table ("" = esquema), privileges[]}; solo logins no-sistema
+SetObjectGrant(serverId int64, database string, req ObjectGrantRequest) error // fija EXACTAMENTE el conjunto de privilegios (otorga lo que falta, revoca lo que sobra)
+ListConnectionUsers(serverId int64, database string) ([]ConnectionUser, error) // root primero, luego logins con acceso a la base; {login, level, isRoot, hasPassword}
+GetLoginPassword(serverId int64, login string) (string, error)           // root: contraseña del servidor; otros: la guardada ("" si no hay). Excepción a "contraseñas no salen"
+RememberLoginPassword(serverId int64, login string, password string) error // verifica conectando como ese login y guarda la contraseña cifrada
+
+// Usuario root: administrador total (mssql sysadmin / postgres SUPERUSER) con el que DB Manager gestiona cada servidor.
+// Al crear un servicio se crea con los valores predeterminados de Ajustes (root/root salvo que se cambien);
+// en mssql se crea con CHECK_POLICY=OFF para admitir cualquier contraseña. Es el único usuario con acceso a todas las bases.
+GetRootDefaults() (RootDefaults, error)                        // {user, passwordIsDefault}; la contraseña nunca sale
+SetRootDefaults(user string, password string) error            // password vacío = conservar (se guarda cifrada en settings.rootPasswordEnc)
+GetRootStatus(serverId int64) (RootStatus, error)              // {user, reachable, isAdmin, message}
+ConfigureRoot(serverId int64, req ConfigureRootRequest) (ConfigureRootResult, error)
+  // {user, password, bootstrapUser?, bootstrapPassword?, dropPrevious}: crea/actualiza el root (con un admin de arranque
+  // si el usuario guardado no tiene permisos), lo verifica, lo guarda y opcionalmente elimina el anterior
+  // (pasándole antes la propiedad de sus bases/objetos). Devuelve {server, warning}.
 
 // Backups / restauraciones
 PickFile(title string, filters []FileFilter) (string, error)   // diálogo nativo; recuerda última carpeta
@@ -252,3 +273,30 @@ CertHistory { id, alias, commonName, notAfter, outputPath, chainLength, verified
 | v2-1 | Desarrollador | Tipos + stubs de todo el contrato v2 + bindings; luego implementación real |
 | v2-2 | Frontend | Navegación en 3 secciones, pantallas SFTP y Certificados |
 | v2-3 | Test | Pruebas de SFTP (login real con llave/contraseña) y PKCS#12 (cadenas válidas/inválidas generadas en el test) |
+
+## MCP (servidor integrado para agentes de IA)
+
+Andres Tools incluye un servidor MCP (Model Context Protocol) por stdio, en el mismo ejecutable: `<exe> mcp` (main.go lo detecta antes de `wails.Run`; sin ventana ni Wails). SDK: `github.com/modelcontextprotocol/go-sdk` v1.8.0. Código: `mcp.go` (servidor, ajustes, `GetMcpInfo/SetMcpSettings/TestMcpServer`), `mcp_tools.go` (registro único de herramientas: nombre, descripción, mutante, handler), `mcp_sql.go` (`run_sql`), `types_mcp.go`.
+
+**Conectar**
+- Claude Code: `claude mcp add --scope user andres-tools -- "<ruta\al\exe>" mcp`
+- Claude Desktop / Cursor: `{"mcpServers":{"andres-tools":{"command":"<exe>","args":["mcp"]}}}`
+- La pantalla Andres Tools > MCP muestra estos comandos (`GetMcpInfo`) y un botón de prueba (`TestMcpServer`: lanza el exe con `mcp` y lista las herramientas).
+
+**Ajustes** (tabla `settings`, se releen en cada llamada; solo se cambian con `SetMcpSettings`, el `SetSetting` genérico rechaza claves `mcp*` y no existe herramienta para cambiarlos)
+- `mcpEnabled` (false): desactivado, toda herramienta devuelve "El servidor MCP está desactivado...".
+- `mcpMode`: `readonly` (defecto) | `full`. En readonly las herramientas mutantes devuelven error.
+- `mcpAllowSql` (false): habilita `run_sql`.
+- `mcpExposePasswords` (false): habilita `get_login_password` y contraseñas reales en cadenas de conexión (si no, `********`).
+
+**Herramientas** (ver `mcpToolDefs()`; snake_case)
+- Lectura: list_servers, get_server, server_status, test_connection, server_logs, list_databases, list_logins, get_permission_matrix, list_schemas, list_object_grants, list_connection_users, get_connection_string, get_login_password, get_root_status, get_root_defaults, list_backups, list_restores, list_operations, list_sftp_services, sftp_service_status, list_sftp_users, list_sftp_folders, sftp_host_fingerprints, check_environment.
+- Pruebas: `run_sql` (una sentencia, conecta COMO el login con su contraseña guardada; un permiso denegado es un resultado `ok=false`; sin login usa root y exige modo completo; 30 s; máx. 1000 filas).
+- Mutantes (modo completo): create/drop_database, create/drop_login, change_password, set_server_roles, create_database_user, set_database_access, create_schema, set_object_grant, configure_root, start/stop/restart_server, create_local_service, create_backup, remember_login_password, start/stop/restart_sftp_service, create/delete_sftp_user, set_sftp_user_password, create/delete_sftp_folder, set_sftp_folder_access, test_sftp_login.
+- Recurso `andres-tools://guide`: guía del modelo de permisos.
+
+**Seguridad**
+- Los drop_* / delete_* exigen `confirm_name` igual al nombre; `create_backup` exige ruta absoluta; sin generación de llaves SFTP por MCP.
+- Cada llamada se registra con `logOp(serverID, "mcp:<herramienta>", destino, err)`; nunca contraseñas; para run_sql solo los primeros 120 caracteres (con literales `password '...'` ocultos).
+- stdout es solo para el protocolo: en modo MCP `os.Stdout` se redirige a stderr y el transporte usa el stdout original; el emisor de eventos es un no-op (el de Wails haría panic) y no se exponen diálogos (PickFile/PickDirectory/SaveFile).
+- Pruebas: `mcp_test.go` (unitarias, transporte en memoria + exe real por stdio) y `app_it_mcp_test.go` (`go test -tags integration -run TestMcp`).

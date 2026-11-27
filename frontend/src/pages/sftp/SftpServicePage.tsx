@@ -1,5 +1,5 @@
 import {useEffect, useState, type ReactNode} from 'react'
-import {FileText, Info, LogIn, Play, RefreshCw, RotateCw, Square, Trash2, Users} from 'lucide-react'
+import {FileText, FolderOpen, FolderTree, Info, LogIn, Play, RefreshCw, RotateCw, Square, Trash2, Users} from 'lucide-react'
 import {useApp, type SftpTab} from '../../store'
 import {api2, type SftpService} from '../../api/v2'
 import {useAsync} from '../../hooks/useAsync'
@@ -7,19 +7,21 @@ import {useToast} from '../../components/Toast'
 import {Badge, Button, Card, Checkbox, ConfirmDialog, CopyButton, EmptyState, ErrorBanner, fmtDate, Notice, PageHeader, Select, Tabs} from '../../components/ui'
 import {StatusDot} from '../../components/Sidebar'
 import SftpUsersTab from './SftpUsersTab'
+import SftpFoldersTab from './SftpFoldersTab'
 import SftpTestTab from './SftpTestTab'
 
 export default function SftpServicePage({id, tab}: {id: number; tab?: SftpTab}) {
   const {sftpServices, sftpStatuses} = useApp()
-  const [current, setCurrent] = useState<SftpTab>(tab ?? 'summary')
+  const [current, setCurrent] = useState<SftpTab | 'folders'>(tab ?? 'summary')
   useEffect(() => { if (tab) setCurrent(tab) }, [tab])
   const svc = sftpServices.find(s => s.id === id)
   if (!svc) return <Card><EmptyState title="Servicio no encontrado">Puede haber sido eliminado. Elige otro en la barra lateral.</EmptyState></Card>
   const managed = svc.mode === 'managed'
   const state = sftpStatuses[id]?.state
-  const tabs: Array<{key: SftpTab; label: string; icon: ReactNode}> = [
+  const tabs: Array<{key: SftpTab | 'folders'; label: string; icon: ReactNode}> = [
     {key: 'summary', label: 'Resumen', icon: <Info size={15}/>},
     {key: 'users' as SftpTab, label: 'Usuarios', icon: <Users size={15}/>},
+    {key: 'folders', label: 'Carpetas', icon: <FolderTree size={15}/>},
     {key: 'test', label: 'Probar acceso', icon: <LogIn size={15}/>},
     {key: 'logs', label: 'Logs', icon: <FileText size={15}/>},
   ]
@@ -32,7 +34,9 @@ export default function SftpServicePage({id, tab}: {id: number; tab?: SftpTab}) 
       <div className="pt-5">
         {active === 'summary' && <Summary svc={svc}/>}
         {active === 'users' && (managed ? <SftpUsersTab svc={svc}/>
-          : <Card><EmptyState title="Usuarios no gestionados">Este servicio es externo (importado): su configuración de usuarios y llaves no la gestiona DB Manager. Solo puedes iniciarlo, detenerlo, ver sus logs y probar el acceso.</EmptyState></Card>)}
+          : <Card><EmptyState title="Usuarios no gestionados">Este servicio es externo (importado): su configuración de usuarios y llaves no la gestiona Andres Tools. Solo puedes iniciarlo, detenerlo, ver sus logs y probar el acceso.</EmptyState></Card>)}
+        {active === 'folders' && (managed ? <SftpFoldersTab svc={svc}/>
+          : <Card><EmptyState title="Carpetas no gestionadas">Este servicio es externo (importado): las carpetas compartidas no las gestiona Andres Tools.</EmptyState></Card>)}
         {active === 'test' && <SftpTestTab svc={svc}/>}
         {active === 'logs' && <Logs svc={svc}/>}
       </div>
@@ -63,6 +67,9 @@ function Summary({svc}: {svc: SftpService}) {
       await status.reload(); await refresh()
     } catch (e) { toast.error(e) } finally { setBusy('') }
   }
+  const openFiles = async () => {
+    try { const p = await api2.openSftpFolder(svc.id, 'service', ''); toast.success(`Carpeta abierta: ${p}`) } catch (e) { toast.error(e) }
+  }
   const knownHosts = keys.data ?? []
   const sftpCmd = `sftp -P ${svc.port} -i RUTA_A_LA_LLAVE USUARIO@${host}`
 
@@ -90,6 +97,8 @@ function Summary({svc}: {svc: SftpService}) {
           <dt className="text-muted">Red</dt><dd>{svc.exposeOnNetwork ? 'Accesible desde la red local' : 'Solo este equipo'}</dd>
           <dt className="text-muted">Creado</dt><dd>{fmtDate(svc.createdAt)}</dd>
         </dl>
+
+        {svc.mode === 'managed' && <div className="mt-3"><Button icon={<FolderOpen size={15}/>} onClick={openFiles}>Abrir carpeta de archivos</Button></div>}
 
         <h4 className="mb-1 mt-5 text-sm font-semibold">Huellas del servidor</h4>
         <ErrorBanner message={fps.error} onRetry={() => void fps.reload()}/>

@@ -39,3 +39,7 @@ export interface CertHistory {
   id: number; alias: string; commonName: string; notAfter: string; outputPath: string; chainLength: number
   verified: boolean; createdAt: string
 }
+
+export type SftpFolderLevel = 'none' | 'read' | 'readwrite'
+export interface SftpFolderAccess { user: string; level: 'read' | 'readwrite' }
+export interface SftpFolder { id: number; name: string; access: SftpFolderAccess[] | null; createdAt: string }

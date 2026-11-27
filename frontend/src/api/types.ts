@@ -1,7 +1,7 @@
 // Tipos planos del contrato (espejo de types.go). Se usan en lugar de las clases generadas.
 export type Engine = 'mssql' | 'postgres'
 export type ServerState = 'running' | 'stopped' | 'missing' | 'remote'
-export type AccessLevel = 'owner' | 'readwrite' | 'readonly' | 'none'
+export type AccessLevel = 'owner' | 'readwrite' | 'readonly' | 'custom' | 'none'
 
 export interface EnvStatus {
   dockerAvailable: boolean; dockerVersion: string; os: string; arch: string
@@ -15,7 +15,14 @@ export interface Server {
 export interface CreateServiceRequest {
   name: string; engine: Engine; image: string; port: number; adminPassword: string
   dataMode: 'volume' | 'bind'; dataPath: string; memoryMB: number; edition?: string; exposeOnNetwork?: boolean; requestId: string
+  rootUser?: string; rootPassword?: string
 }
+export interface RootDefaults { user: string; passwordIsDefault: boolean }
+export interface RootStatus { user: string; reachable: boolean; isAdmin: boolean; message: string }
+export interface ConfigureRootRequest {
+  user: string; password: string; bootstrapUser: string; bootstrapPassword: string; dropPrevious: boolean
+}
+export interface ConfigureRootResult { server: Server; warning: string }
 export interface ImportContainerRequest { containerName: string; adminUser: string; adminPassword: string }
 export interface RemoteServerRequest {
   name: string; engine: Engine; host: string; port: number; adminUser: string; adminPassword: string
@@ -54,3 +61,9 @@ export interface Operation {
   id: number; serverId: number; kind: string; target: string; status: string; message: string; createdAt: string
 }
 export interface ProgressEvent { requestId: string; id: number; percent: number; message: string; done: boolean; error: boolean }
+
+export type Privilege = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'EXECUTE' | 'ALTER'
+export interface SchemaInfo { name: string; owner: string; tables: string[] | null; system: boolean }
+export interface ObjectGrant { login: string; schema: string; table: string; privileges: Privilege[] | null }
+export type ObjectGrantRequest = ObjectGrant
+export interface ConnectionUser { login: string; level: string; isRoot: boolean; hasPassword: boolean }

@@ -12,19 +12,29 @@ export function ChangePassword(arg1:number,arg2:string,arg3:string):Promise<void
 
 export function CheckEnvironment():Promise<main.EnvStatus>;
 
+export function ConfigureRoot(arg1:number,arg2:main.ConfigureRootRequest):Promise<main.ConfigureRootResult>;
+
 export function CreateBackup(arg1:main.BackupRequest):Promise<main.BackupRecord>;
 
 export function CreateDatabase(arg1:number,arg2:string,arg3:string):Promise<void>;
 
+export function CreateDatabaseUser(arg1:number,arg2:string,arg3:main.CreateLoginRequest,arg4:string):Promise<void>;
+
 export function CreateLocalService(arg1:main.CreateServiceRequest):Promise<main.Server>;
 
 export function CreateLogin(arg1:number,arg2:main.CreateLoginRequest):Promise<void>;
+
+export function CreateSchema(arg1:number,arg2:string,arg3:string):Promise<void>;
+
+export function CreateSftpFolder(arg1:number,arg2:string):Promise<void>;
 
 export function CreateSftpService(arg1:main.CreateSftpRequest):Promise<main.SftpService>;
 
 export function CreateSftpUser(arg1:number,arg2:main.CreateSftpUserRequest):Promise<main.SftpUserResult>;
 
 export function DeleteServer(arg1:number,arg2:boolean,arg3:boolean):Promise<void>;
+
+export function DeleteSftpFolder(arg1:number,arg2:string,arg3:boolean):Promise<void>;
 
 export function DeleteSftpService(arg1:number,arg2:boolean,arg3:boolean):Promise<void>;
 
@@ -34,7 +44,15 @@ export function DropDatabase(arg1:number,arg2:string):Promise<void>;
 
 export function DropLogin(arg1:number,arg2:string):Promise<void>;
 
+export function GetLoginPassword(arg1:number,arg2:string):Promise<string>;
+
+export function GetMcpInfo():Promise<main.McpInfo>;
+
 export function GetPermissionMatrix(arg1:number):Promise<main.PermissionMatrix>;
+
+export function GetRootDefaults():Promise<main.RootDefaults>;
+
+export function GetRootStatus(arg1:number):Promise<main.RootStatus>;
 
 export function GetServer(arg1:number):Promise<main.Server>;
 
@@ -56,6 +74,8 @@ export function ListBackups(arg1:number):Promise<Array<main.BackupRecord>>;
 
 export function ListCertificateHistory(arg1:number):Promise<Array<main.CertHistory>>;
 
+export function ListConnectionUsers(arg1:number,arg2:string):Promise<Array<main.ConnectionUser>>;
+
 export function ListDatabases(arg1:number):Promise<Array<main.Database>>;
 
 export function ListImportableContainers():Promise<Array<main.ContainerInfo>>;
@@ -64,21 +84,31 @@ export function ListImportableSftpContainers():Promise<Array<main.ContainerInfo>
 
 export function ListLogins(arg1:number):Promise<Array<main.Login>>;
 
+export function ListObjectGrants(arg1:number,arg2:string):Promise<Array<main.ObjectGrant>>;
+
 export function ListOperations(arg1:number):Promise<Array<main.Operation>>;
 
 export function ListRestores(arg1:number):Promise<Array<main.RestoreRecord>>;
 
+export function ListSchemas(arg1:number,arg2:string):Promise<Array<main.SchemaInfo>>;
+
 export function ListServers():Promise<Array<main.Server>>;
+
+export function ListSftpFolders(arg1:number):Promise<Array<main.SftpFolder>>;
 
 export function ListSftpServices():Promise<Array<main.SftpService>>;
 
 export function ListSftpUsers(arg1:number):Promise<Array<main.SftpUser>>;
+
+export function OpenSftpFolder(arg1:number,arg2:string,arg3:string):Promise<string>;
 
 export function PickDirectory(arg1:string):Promise<string>;
 
 export function PickFile(arg1:string,arg2:Array<main.FileFilter>):Promise<string>;
 
 export function ProgressEventType():Promise<main.ProgressEvent>;
+
+export function RememberLoginPassword(arg1:number,arg2:string,arg3:string):Promise<void>;
 
 export function RemoveSftpUserKey(arg1:number,arg2:string,arg3:number):Promise<void>;
 
@@ -96,9 +126,17 @@ export function ServerStatus(arg1:number):Promise<main.ServerStatus>;
 
 export function SetDatabaseAccess(arg1:number,arg2:string,arg3:string,arg4:string):Promise<void>;
 
+export function SetMcpSettings(arg1:main.McpSettings):Promise<void>;
+
+export function SetObjectGrant(arg1:number,arg2:string,arg3:main.ObjectGrantRequest):Promise<void>;
+
+export function SetRootDefaults(arg1:string,arg2:string):Promise<void>;
+
 export function SetServerRoles(arg1:number,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function SetSetting(arg1:string,arg2:string):Promise<void>;
+
+export function SetSftpFolderAccess(arg1:number,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SetSftpUserPassword(arg1:number,arg2:string,arg3:string):Promise<void>;
 
@@ -115,6 +153,8 @@ export function StopServer(arg1:number):Promise<void>;
 export function StopSftpService(arg1:number):Promise<void>;
 
 export function TestConnection(arg1:number):Promise<main.ServerStatus>;
+
+export function TestMcpServer():Promise<main.McpTestResult>;
 
 export function TestRemoteConnection(arg1:main.RemoteServerRequest):Promise<main.ServerStatus>;
 

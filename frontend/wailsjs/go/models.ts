@@ -189,6 +189,116 @@ export namespace main {
 	    }
 	}
 	
+	export class ConfigureRootRequest {
+	    user: string;
+	    password: string;
+	    bootstrapUser: string;
+	    bootstrapPassword: string;
+	    dropPrevious: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigureRootRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.user = source["user"];
+	        this.password = source["password"];
+	        this.bootstrapUser = source["bootstrapUser"];
+	        this.bootstrapPassword = source["bootstrapPassword"];
+	        this.dropPrevious = source["dropPrevious"];
+	    }
+	}
+	export class Server {
+	    id: number;
+	    name: string;
+	    engine: string;
+	    mode: string;
+	    host: string;
+	    port: number;
+	    adminUser: string;
+	    hasPassword: boolean;
+	    containerName: string;
+	    image: string;
+	    dataMode: string;
+	    dataPath: string;
+	    tls: boolean;
+	    trustServerCert: boolean;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Server(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.engine = source["engine"];
+	        this.mode = source["mode"];
+	        this.host = source["host"];
+	        this.port = source["port"];
+	        this.adminUser = source["adminUser"];
+	        this.hasPassword = source["hasPassword"];
+	        this.containerName = source["containerName"];
+	        this.image = source["image"];
+	        this.dataMode = source["dataMode"];
+	        this.dataPath = source["dataPath"];
+	        this.tls = source["tls"];
+	        this.trustServerCert = source["trustServerCert"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class ConfigureRootResult {
+	    server: Server;
+	    warning: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigureRootResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.server = this.convertValues(source["server"], Server);
+	        this.warning = source["warning"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ConnectionUser {
+	    login: string;
+	    level: string;
+	    isRoot: boolean;
+	    hasPassword: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConnectionUser(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.login = source["login"];
+	        this.level = source["level"];
+	        this.isRoot = source["isRoot"];
+	        this.hasPassword = source["hasPassword"];
+	    }
+	}
 	export class ContainerInfo {
 	    id: string;
 	    name: string;
@@ -247,6 +357,8 @@ export namespace main {
 	    memoryMB: number;
 	    edition: string;
 	    exposeOnNetwork: boolean;
+	    rootUser: string;
+	    rootPassword: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CreateServiceRequest(source);
@@ -265,6 +377,8 @@ export namespace main {
 	        this.memoryMB = source["memoryMB"];
 	        this.edition = source["edition"];
 	        this.exposeOnNetwork = source["exposeOnNetwork"];
+	        this.rootUser = source["rootUser"];
+	        this.rootPassword = source["rootPassword"];
 	    }
 	}
 	export class CreateSftpRequest {
@@ -439,6 +553,138 @@ export namespace main {
 	        this.serverRoles = source["serverRoles"];
 	        this.disabled = source["disabled"];
 	        this.isSystem = source["isSystem"];
+	    }
+	}
+	export class McpToolInfo {
+	    name: string;
+	    description: string;
+	    mutating: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new McpToolInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.mutating = source["mutating"];
+	    }
+	}
+	export class McpSettings {
+	    enabled: boolean;
+	    mode: string;
+	    allowSql: boolean;
+	    exposePasswords: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new McpSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.mode = source["mode"];
+	        this.allowSql = source["allowSql"];
+	        this.exposePasswords = source["exposePasswords"];
+	    }
+	}
+	export class McpInfo {
+	    settings: McpSettings;
+	    exePath: string;
+	    claudeCodeCommand: string;
+	    claudeDesktopJson: string;
+	    genericJson: string;
+	    tools: McpToolInfo[];
+	    devBuild: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new McpInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.settings = this.convertValues(source["settings"], McpSettings);
+	        this.exePath = source["exePath"];
+	        this.claudeCodeCommand = source["claudeCodeCommand"];
+	        this.claudeDesktopJson = source["claudeDesktopJson"];
+	        this.genericJson = source["genericJson"];
+	        this.tools = this.convertValues(source["tools"], McpToolInfo);
+	        this.devBuild = source["devBuild"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class McpTestResult {
+	    ok: boolean;
+	    message: string;
+	    toolCount: number;
+	    serverVersion: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new McpTestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.message = source["message"];
+	        this.toolCount = source["toolCount"];
+	        this.serverVersion = source["serverVersion"];
+	    }
+	}
+	
+	export class ObjectGrant {
+	    login: string;
+	    schema: string;
+	    table: string;
+	    privileges: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ObjectGrant(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.login = source["login"];
+	        this.schema = source["schema"];
+	        this.table = source["table"];
+	        this.privileges = source["privileges"];
+	    }
+	}
+	export class ObjectGrantRequest {
+	    login: string;
+	    schema: string;
+	    table: string;
+	    privileges: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ObjectGrantRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.login = source["login"];
+	        this.schema = source["schema"];
+	        this.table = source["table"];
+	        this.privileges = source["privileges"];
 	    }
 	}
 	export class Operation {
@@ -750,46 +996,57 @@ export namespace main {
 	        this.replace = source["replace"];
 	    }
 	}
-	export class Server {
-	    id: number;
-	    name: string;
-	    engine: string;
-	    mode: string;
-	    host: string;
-	    port: number;
-	    adminUser: string;
-	    hasPassword: boolean;
-	    containerName: string;
-	    image: string;
-	    dataMode: string;
-	    dataPath: string;
-	    tls: boolean;
-	    trustServerCert: boolean;
-	    createdAt: string;
+	export class RootDefaults {
+	    user: string;
+	    passwordIsDefault: boolean;
 	
 	    static createFrom(source: any = {}) {
-	        return new Server(source);
+	        return new RootDefaults(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.engine = source["engine"];
-	        this.mode = source["mode"];
-	        this.host = source["host"];
-	        this.port = source["port"];
-	        this.adminUser = source["adminUser"];
-	        this.hasPassword = source["hasPassword"];
-	        this.containerName = source["containerName"];
-	        this.image = source["image"];
-	        this.dataMode = source["dataMode"];
-	        this.dataPath = source["dataPath"];
-	        this.tls = source["tls"];
-	        this.trustServerCert = source["trustServerCert"];
-	        this.createdAt = source["createdAt"];
+	        this.user = source["user"];
+	        this.passwordIsDefault = source["passwordIsDefault"];
 	    }
 	}
+	export class RootStatus {
+	    user: string;
+	    reachable: boolean;
+	    isAdmin: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RootStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.user = source["user"];
+	        this.reachable = source["reachable"];
+	        this.isAdmin = source["isAdmin"];
+	        this.message = source["message"];
+	    }
+	}
+	export class SchemaInfo {
+	    name: string;
+	    owner: string;
+	    tables: string[];
+	    system: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SchemaInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.owner = source["owner"];
+	        this.tables = source["tables"];
+	        this.system = source["system"];
+	    }
+	}
+	
 	export class ServerStatus {
 	    state: string;
 	    reachable: boolean;
@@ -808,6 +1065,57 @@ export namespace main {
 	        this.message = source["message"];
 	    }
 	}
+	export class SftpFolderAccess {
+	    user: string;
+	    level: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SftpFolderAccess(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.user = source["user"];
+	        this.level = source["level"];
+	    }
+	}
+	export class SftpFolder {
+	    id: number;
+	    name: string;
+	    access: SftpFolderAccess[];
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SftpFolder(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.access = this.convertValues(source["access"], SftpFolderAccess);
+	        this.createdAt = source["createdAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class SftpKey {
 	    id: number;
 	    comment: string;

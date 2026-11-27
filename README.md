@@ -1,4 +1,4 @@
-# DB Manager
+# Andres Tools
 
 App de escritorio para **Windows, macOS y Ubuntu** que gestiona motores **SQL Server** y **PostgreSQL**
 en Docker local, y también servidores remotos ya existentes.

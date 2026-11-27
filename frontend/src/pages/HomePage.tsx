@@ -7,7 +7,7 @@ import {EngineBadge, StatusDot} from '../components/Sidebar'
 function DockerHelp() {
   return (
     <Card title="Docker no está disponible">
-      <p className="mb-4 text-sm">DB Manager necesita Docker para crear y gestionar servidores locales. Instálalo o inícialo según tu sistema:</p>
+      <p className="mb-4 text-sm">Andres Tools necesita Docker para crear y gestionar servidores locales. Instálalo o inícialo según tu sistema:</p>
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-md border border-line p-3">
           <h4 className="mb-1 font-semibold">Windows</h4>

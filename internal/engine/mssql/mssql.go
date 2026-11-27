@@ -80,7 +80,9 @@ func IsSystemLogin(name string) bool {
 }
 
 // ClassifyLevel convierte pertenencias a roles en un nivel de acceso.
-func ClassifyLevel(isOwner, reader, writer bool) string {
+// hasUser indica que el login tiene usuario en la base: sin roles gestionados es acceso "custom"
+// (solo permisos por esquema/tabla).
+func ClassifyLevel(isOwner, reader, writer, hasUser bool) string {
 	switch {
 	case isOwner:
 		return engine.LevelOwner
@@ -88,6 +90,8 @@ func ClassifyLevel(isOwner, reader, writer bool) string {
 		return engine.LevelReadWrite
 	case reader:
 		return engine.LevelReadOnly
+	case hasUser:
+		return engine.LevelCustom
 	}
 	return engine.LevelNone
 }
@@ -487,7 +491,7 @@ GROUP BY sp.name`
 			var l string
 			var o, r, w int
 			if rows.Scan(&l, &o, &r, &w) == nil {
-				levels[key{l, d}] = ClassifyLevel(o == 1 || owners[d] == l, r == 1, w == 1)
+				levels[key{l, d}] = ClassifyLevel(o == 1 || owners[d] == l, r == 1, w == 1, true)
 			}
 		}
 		rows.Close()
@@ -496,7 +500,7 @@ GROUP BY sp.name`
 		for _, d := range dbs {
 			lv := levels[key{l, d}]
 			if lv == "" {
-				lv = ClassifyLevel(owners[d] == l, false, false)
+				lv = ClassifyLevel(owners[d] == l, false, false, false)
 			}
 			m.Cells = append(m.Cells, engine.Cell{Login: l, Database: d, Level: lv})
 		}
@@ -586,6 +590,94 @@ func (e *Engine) SetDatabaseAccess(ctx context.Context, login, database, level s
 var errSelf = errors.New("no se puede modificar, cambiar la contraseña ni eliminar el login con el que la app está conectada a este servidor (podría bloquear el servidor)")
 
 func (e *Engine) isSelf(name string) bool { return strings.EqualFold(name, e.c.User) }
+
+// IsAdmin indica si el login conectado pertenece a sysadmin.
+func (e *Engine) IsAdmin(ctx context.Context) (bool, error) {
+	var n sql.NullInt64
+	if err := e.db.QueryRowContext(ctx, `SELECT IS_SRVROLEMEMBER('sysadmin')`).Scan(&n); err != nil {
+		return false, err
+	}
+	return n.Valid && n.Int64 == 1, nil
+}
+
+// EnsureAdminLogin crea o actualiza un login SQL con sysadmin. La política de contraseñas de Windows
+// se desactiva (CHECK_POLICY=OFF) para que el usuario pueda elegir la contraseña que quiera (p. ej. "root").
+func (e *Engine) EnsureAdminLogin(ctx context.Context, name, password string) error {
+	if err := validate.Identifier(validate.EngineMSSQL, name); err != nil {
+		return err
+	}
+	if IsSystemLogin(name) {
+		return fmt.Errorf("%q es un login del sistema; elija otro nombre para el usuario root", name)
+	}
+	if password == "" {
+		return errors.New("la contraseña es obligatoria")
+	}
+	id := validate.MSSQLIdent(name)
+	// Una sola conexión: si el login es el conectado, tras cambiar su contraseña el pool no podría abrir otra.
+	conn, err := e.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	var n int
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM sys.server_principals WHERE name = @p1 AND type IN ('S','U','G')`, name).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := conn.ExecContext(ctx, "CREATE LOGIN "+id+" WITH PASSWORD = "+validate.MSSQLString(password)+", CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF"); err != nil {
+			return err
+		}
+	} else {
+		for _, stmt := range []string{
+			"ALTER LOGIN " + id + " WITH CHECK_EXPIRATION = OFF",
+			"ALTER LOGIN " + id + " WITH CHECK_POLICY = OFF",
+			"ALTER LOGIN " + id + " ENABLE",
+		} {
+			if _, err := conn.ExecContext(ctx, stmt); err != nil {
+				return err
+			}
+		}
+	}
+	var member sql.NullInt64
+	if err := conn.QueryRowContext(ctx, `SELECT IS_SRVROLEMEMBER('sysadmin', @p1)`, name).Scan(&member); err != nil {
+		return err
+	}
+	if !member.Valid || member.Int64 != 1 {
+		if _, err := conn.ExecContext(ctx, "ALTER SERVER ROLE [sysadmin] ADD MEMBER "+id); err != nil {
+			return fmt.Errorf("el login se creó pero no se pudo agregar a sysadmin: %w", err)
+		}
+	}
+	if n > 0 { // la contraseña al final
+		if _, err := conn.ExecContext(ctx, "ALTER LOGIN "+id+" WITH PASSWORD = "+validate.MSSQLString(password)+" UNLOCK"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ReassignOwnership pasa a "to" las bases de datos cuyo propietario es "from" (para poder eliminar "from").
+func (e *Engine) ReassignOwnership(ctx context.Context, from, to string) error {
+	rows, err := e.db.QueryContext(ctx, `SELECT name FROM sys.databases WHERE owner_sid = SUSER_SID(@p1) AND database_id > 4`, from)
+	if err != nil {
+		return err
+	}
+	var dbs []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			rows.Close()
+			return err
+		}
+		dbs = append(dbs, d)
+	}
+	rows.Close()
+	for _, d := range dbs {
+		if _, err := e.db.ExecContext(ctx, "ALTER AUTHORIZATION ON DATABASE::"+validate.MSSQLIdent(d)+" TO "+validate.MSSQLIdent(to)); err != nil {
+			return fmt.Errorf("no se pudo pasar la propiedad de %s: %w", d, err)
+		}
+	}
+	return nil
+}
 
 // longNameLimit: por encima de este largo los archivos físicos usan nombres cortos, porque
 // SQL Server falla con "<nombre>_log.ldf" demasiado largo.

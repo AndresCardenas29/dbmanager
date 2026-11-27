@@ -58,17 +58,27 @@ func (s *Services) ConnFor(sv store.Server) (engine.Conn, error) {
 	if err != nil {
 		return engine.Conn{}, err
 	}
+	return connWith(sv, sv.AdminUser, pw), nil
+}
+
+// ConnAs devuelve los parámetros de conexión del servidor registrado con otro usuario y contraseña.
+func (s *Services) ConnAs(sv store.Server, user, password string) engine.Conn {
+	return connWith(sv, user, password)
+}
+
+// connWith devuelve los parámetros de conexión del servidor con otras credenciales.
+func connWith(sv store.Server, user, password string) engine.Conn {
 	host := sv.Host
 	if host == "" {
 		host = "localhost"
 	}
-	c := engine.Conn{Host: host, Port: sv.Port, User: sv.AdminUser, Password: pw, TLS: sv.TLS, TrustCert: sv.TrustServerCert}
+	c := engine.Conn{Host: host, Port: sv.Port, User: user, Password: password, TLS: sv.TLS, TrustCert: sv.TrustServerCert}
 	if sv.Mode == "local" {
 		// Certificado autofirmado del contenedor: siempre se acepta.
 		c.TrustCert = true
 		c.TLS = sv.Engine == validate.EngineMSSQL
 	}
-	return c, nil
+	return c
 }
 
 // NewEngine crea el engine adecuado para el servidor. El llamador debe cerrarlo.

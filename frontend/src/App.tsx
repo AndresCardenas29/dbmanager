@@ -8,6 +8,7 @@ import RemotePage from './pages/RemotePage'
 import ServerPage from './pages/ServerPage'
 import HistoryPage from './pages/HistoryPage'
 import SettingsPage from './pages/SettingsPage'
+import McpPage from './pages/McpPage'
 import SftpNewPage from './pages/sftp/SftpNewPage'
 import SftpImportPage from './pages/sftp/SftpImportPage'
 import SftpServicePage from './pages/sftp/SftpServicePage'
@@ -31,6 +32,7 @@ function Router() {
     case 'certHistory': return <CertHistoryPage/>
     case 'history': return <HistoryPage/>
     case 'settings': return <SettingsPage/>
+    case 'mcp': return <McpPage/>
   }
 }
 

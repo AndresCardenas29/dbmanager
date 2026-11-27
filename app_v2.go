@@ -404,3 +404,56 @@ func (a *App) SaveFile(title string, defaultName string, filters []FileFilter) (
 	}
 	return p, nil
 }
+
+// ---------- SFTP: carpetas compartidas ----------
+
+func (a *App) ListSftpFolders(serviceId int64) ([]SftpFolder, error) {
+	m, err := a.sftpManager()
+	if err != nil {
+		return nil, err
+	}
+	list, err := m.ListFolders(serviceId)
+	if err != nil {
+		return nil, friendlyDBErr(err)
+	}
+	out := make([]SftpFolder, 0, len(list))
+	for _, v := range list {
+		f := SftpFolder{ID: v.Folder.ID, Name: v.Folder.Name, Access: []SftpFolderAccess{}, CreatedAt: fmtTime(v.Folder.CreatedAt)}
+		for _, ac := range v.Access {
+			f.Access = append(f.Access, SftpFolderAccess{User: ac.UserName, Level: ac.Level})
+		}
+		out = append(out, f)
+	}
+	return out, nil
+}
+
+func (a *App) CreateSftpFolder(serviceId int64, name string) error {
+	return a.sftpDo(time.Minute, func(ctx context.Context, m *sftp.Manager) error {
+		return a.opErr(serviceId, "create-sftp-folder", name, m.CreateFolder(ctx, serviceId, name))
+	})
+}
+
+func (a *App) DeleteSftpFolder(serviceId int64, name string, deleteFiles bool) error {
+	return a.sftpDo(3*time.Minute, func(ctx context.Context, m *sftp.Manager) error {
+		return a.opErr(serviceId, "delete-sftp-folder", name, m.DeleteFolder(ctx, serviceId, name, deleteFiles))
+	})
+}
+
+func (a *App) SetSftpFolderAccess(serviceId int64, folder string, user string, level string) error {
+	return a.sftpDo(3*time.Minute, func(ctx context.Context, m *sftp.Manager) error {
+		return a.opErr(serviceId, "set-sftp-folder-access", folder+":"+user+":"+level, m.SetFolderAccess(ctx, serviceId, folder, user, level))
+	})
+}
+
+// OpenSftpFolder abre en el explorador del sistema el almacenamiento (kind: service|user|folder) y devuelve la ruta.
+func (a *App) OpenSftpFolder(serviceId int64, kind string, name string) (string, error) {
+	m, err := a.sftpManager()
+	if err != nil {
+		return "", err
+	}
+	p, err := m.OpenFolder(serviceId, kind, name)
+	if err != nil {
+		return "", friendlyDBErr(err)
+	}
+	return p, nil
+}

@@ -5,10 +5,11 @@ import {useAsync} from '../../hooks/useAsync'
 import {useToast} from '../../components/Toast'
 import {Card, cx, EmptyState, ErrorBanner, IconButton, Spinner} from '../../components/ui'
 
-const LEVELS: Array<{value: AccessLevel; label: string; mssql: string; pg: string; tone: string}> = [
+export const LEVELS: Array<{value: AccessLevel; label: string; mssql: string; pg: string; tone: string}> = [
   {value: 'owner', label: 'Propietario', mssql: 'Rol db_owner: control total de la base de datos.', pg: 'Dueño de la base de datos.', tone: 'text-accent'},
   {value: 'readwrite', label: 'Lectura y escritura', mssql: 'Roles db_datareader + db_datawriter.', pg: 'CONNECT, USAGE y SELECT/INSERT/UPDATE/DELETE en el esquema public (también en tablas futuras).', tone: 'text-success'},
   {value: 'readonly', label: 'Solo lectura', mssql: 'Rol db_datareader.', pg: 'CONNECT, USAGE y SELECT en el esquema public (también en tablas futuras).', tone: 'text-warn'},
+  {value: 'custom', label: 'Por esquema/tabla', mssql: 'Usuario en la base sin roles globales; sus permisos se definen por esquema o tabla (pestaña Esquemas).', pg: 'CONNECT a la base; permisos por esquema o tabla (pestaña Esquemas).', tone: 'text-accent'},
   {value: 'none', label: 'Sin acceso', mssql: 'Se quitan los roles del usuario en la base de datos.', pg: 'Se revocan los privilegios sobre la base de datos.', tone: 'text-muted'},
 ]
 

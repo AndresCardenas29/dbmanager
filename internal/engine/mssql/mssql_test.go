@@ -9,14 +9,15 @@ import (
 
 func TestClassifyLevel(t *testing.T) {
 	cases := []struct {
-		o, r, w bool
-		want    string
+		o, r, w, u bool
+		want       string
 	}{
-		{true, false, false, "owner"}, {false, true, true, "readwrite"}, {false, true, false, "readonly"},
-		{false, false, true, "none"}, {false, false, false, "none"},
+		{true, false, false, false, "owner"}, {false, true, true, true, "readwrite"}, {false, true, false, true, "readonly"},
+		{false, false, true, true, "custom"}, {false, false, false, true, "custom"}, {false, false, false, false, "none"},
+		{false, false, true, false, "none"}, {true, false, false, true, "owner"},
 	}
 	for _, c := range cases {
-		if got := ClassifyLevel(c.o, c.r, c.w); got != c.want {
+		if got := ClassifyLevel(c.o, c.r, c.w, c.u); got != c.want {
 			t.Errorf("%v -> %s, want %s", c, got, c.want)
 		}
 	}

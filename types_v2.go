@@ -155,3 +155,15 @@ type CertHistory struct {
 	Verified    bool   `json:"verified"`
 	CreatedAt   string `json:"createdAt"`
 }
+
+type SftpFolderAccess struct {
+	User  string `json:"user"`
+	Level string `json:"level"`
+}
+
+type SftpFolder struct {
+	ID        int64              `json:"id"`
+	Name      string             `json:"name"`
+	Access    []SftpFolderAccess `json:"access"`
+	CreatedAt string             `json:"createdAt"`
+}

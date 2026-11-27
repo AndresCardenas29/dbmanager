@@ -7,7 +7,7 @@ export default function CertHistoryPage() {
   const h = useAsync(() => api2.listCertHistory(200), [])
   return (
     <div>
-      <PageHeader title="Historial de certificados" subtitle="Archivos .p12 generados desde DB Manager."
+      <PageHeader title="Historial de certificados" subtitle="Archivos .p12 generados desde Andres Tools."
         actions={<Button icon={<RefreshCw size={15}/>} loading={h.loading} onClick={() => void h.reload()}>Actualizar</Button>}/>
       <Card>
         <ErrorBanner message={h.error} onRetry={() => void h.reload()}/>

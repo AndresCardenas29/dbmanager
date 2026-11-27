@@ -64,16 +64,20 @@ func (e *Engine) connect(ctx context.Context, db string) (*pgx.Conn, error) {
 }
 
 // ClassifyLevel convierte privilegios en un nivel de acceso.
-func ClassifyLevel(isOwner, connect, canSelect, canWrite bool) string {
+// explicitConnect = el rol tiene un CONNECT explícito en la base (sin acceso completo al esquema public
+// se considera acceso "custom": solo permisos por esquema/tabla).
+func ClassifyLevel(isOwner, connect, canSelect, canWrite, explicitConnect bool) string {
 	switch {
 	case isOwner:
 		return engine.LevelOwner
-	case !connect || !canSelect:
-		return engine.LevelNone
-	case canWrite:
+	case connect && canSelect && canWrite:
 		return engine.LevelReadWrite
+	case connect && canSelect:
+		return engine.LevelReadOnly
+	case explicitConnect:
+		return engine.LevelCustom
 	}
-	return engine.LevelReadOnly
+	return engine.LevelNone
 }
 
 func (e *Engine) Ping(ctx context.Context) (string, error) {
@@ -313,7 +317,7 @@ func (e *Engine) DropLogin(ctx context.Context, name string) error {
 	// Revoca privilegios otorgados a este rol en cada base para poder eliminarlo.
 	if dbs, err := e.matrixDatabases(ctx, conn); err == nil {
 		for _, d := range dbs {
-			if err := e.revokeAll(ctx, d, name); err != nil {
+			if err := e.revokeAll(ctx, d, name, true); err != nil {
 				return fmt.Errorf("no se pudieron revocar los privilegios en %s: %w", d, err)
 			}
 		}
@@ -399,7 +403,10 @@ SELECT r.rolname,
  (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
    AND has_table_privilege(r.oid, c.oid, 'INSERT') AND has_table_privilege(r.oid, c.oid, 'UPDATE') AND has_table_privilege(r.oid, c.oid, 'DELETE')),
  EXISTS(SELECT 1 FROM pg_default_acl d, aclexplode(d.defaclacl) a WHERE d.defaclnamespace = 'public'::regnamespace AND d.defaclobjtype = 'r' AND a.grantee = r.oid AND a.privilege_type = 'SELECT'),
- EXISTS(SELECT 1 FROM pg_default_acl d, aclexplode(d.defaclacl) a WHERE d.defaclnamespace = 'public'::regnamespace AND d.defaclobjtype = 'r' AND a.grantee = r.oid AND a.privilege_type = 'INSERT')
+ EXISTS(SELECT 1 FROM pg_default_acl d, aclexplode(d.defaclacl) a WHERE d.defaclnamespace = 'public'::regnamespace AND d.defaclobjtype = 'r' AND a.grantee = r.oid AND a.privilege_type = 'INSERT'),
+ EXISTS(SELECT 1 FROM pg_database dd, aclexplode(dd.datacl) a WHERE dd.datname = current_database() AND a.grantee = r.oid AND a.privilege_type = 'CONNECT')
+ AND (EXISTS(SELECT 1 FROM pg_namespace n, aclexplode(n.nspacl) a WHERE a.grantee = r.oid AND n.nspname <> 'public' AND n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema')
+  OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace, aclexplode(c.relacl) a WHERE a.grantee = r.oid AND n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'))
 FROM pg_roles r WHERE r.rolcanlogin AND r.rolname NOT LIKE 'pg\_%' AND r.rolname <> 'postgres'`
 
 func (e *Engine) GetPermissionMatrix(ctx context.Context) (engine.Matrix, error) {
@@ -444,16 +451,16 @@ func (e *Engine) GetPermissionMatrix(ctx context.Context) (engine.Matrix, error)
 		if err == nil {
 			for rows.Next() {
 				var l string
-				var cn, defSel, defIns bool
+				var cn, defSel, defIns, expConn bool
 				var ntab, nsel, nwr int64
-				if rows.Scan(&l, &cn, &ntab, &nsel, &nwr, &defSel, &defIns) != nil {
+				if rows.Scan(&l, &cn, &ntab, &nsel, &nwr, &defSel, &defIns, &expConn) != nil {
 					continue
 				}
 				sel, wr := defSel, defIns
 				if ntab > 0 {
 					sel, wr = nsel == ntab, nwr == ntab
 				}
-				levels[key{l, d}] = ClassifyLevel(owners[d] == l, cn, sel, wr)
+				levels[key{l, d}] = ClassifyLevel(owners[d] == l, cn, sel, wr, expConn)
 			}
 			rows.Close()
 		}
@@ -463,7 +470,7 @@ func (e *Engine) GetPermissionMatrix(ctx context.Context) (engine.Matrix, error)
 		for _, d := range dbs {
 			lv := levels[key{l, d}]
 			if lv == "" {
-				lv = ClassifyLevel(owners[d] == l, false, false, false)
+				lv = ClassifyLevel(owners[d] == l, false, false, false, false)
 			}
 			m.Cells = append(m.Cells, engine.Cell{Login: l, Database: d, Level: lv})
 		}
@@ -525,7 +532,8 @@ func execAll(ctx context.Context, conn *pgx.Conn, stmts []string) error {
 }
 
 // revokeAll quita todos los privilegios del rol en la base (esquema public y CONNECT).
-func (e *Engine) revokeAll(ctx context.Context, database, role string, forRoles ...string) error {
+// otherSchemas=true también limpia los privilegios en los demás esquemas de usuario (nivel none / eliminar rol).
+func (e *Engine) revokeAll(ctx context.Context, database, role string, otherSchemas bool, forRoles ...string) error {
 	conn, err := e.connect(ctx, database)
 	if err != nil {
 		return err
@@ -541,6 +549,9 @@ func (e *Engine) revokeAll(ctx context.Context, database, role string, forRoles 
 		}
 	}
 	bestEffort(ctx, conn, forRoleSQL(role, "", forRoles, true))
+	if otherSchemas {
+		revokeOtherSchemas(ctx, conn, role, forRoles)
+	}
 	_, err = conn.Exec(ctx, "REVOKE ALL ON DATABASE "+validate.PGIdent(database)+" FROM "+validate.PGIdent(role))
 	return err
 }
@@ -606,7 +617,7 @@ func (e *Engine) SetDatabaseAccess(ctx context.Context, login, database, level s
 	if owner != login && owner != e.c.User {
 		effOwners = append(effOwners, owner)
 	}
-	if err := e.revokeAll(ctx, database, login, effOwners...); err != nil {
+	if err := e.revokeAll(ctx, database, login, level == engine.LevelNone, effOwners...); err != nil {
 		return err
 	}
 	if level == engine.LevelNone {
@@ -648,6 +659,87 @@ var errSelf = errors.New("no se puede modificar, cambiar la contraseña ni elimi
 
 // isSelf indica si name es el login con el que se conecta la app.
 func (e *Engine) isSelf(name string) bool { return name == e.c.User }
+
+// IsAdmin indica si el rol conectado es SUPERUSER.
+func (e *Engine) IsAdmin(ctx context.Context) (bool, error) {
+	conn, err := e.connect(ctx, "postgres")
+	if err != nil {
+		return false, err
+	}
+	defer conn.Close(ctx)
+	var su bool
+	err = conn.QueryRow(ctx, "SELECT rolsuper FROM pg_roles WHERE rolname = current_user").Scan(&su)
+	return su, err
+}
+
+// EnsureAdminLogin crea o actualiza un rol con LOGIN SUPERUSER CREATEDB CREATEROLE.
+func (e *Engine) EnsureAdminLogin(ctx context.Context, name, password string) error {
+	if err := validate.Identifier(validate.EnginePostgres, name); err != nil {
+		return err
+	}
+	if IsSystemRole(name) {
+		return fmt.Errorf("%q es un rol del sistema; elija otro nombre para el usuario root", name)
+	}
+	if password == "" {
+		return errors.New("la contraseña es obligatoria")
+	}
+	conn, err := e.connect(ctx, "postgres")
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	ex, err := roleExists(ctx, conn, name)
+	if err != nil {
+		return err
+	}
+	verb := "CREATE ROLE "
+	if ex {
+		verb = "ALTER ROLE "
+	}
+	_, err = conn.Exec(ctx, verb+validate.PGIdent(name)+" WITH LOGIN SUPERUSER CREATEDB CREATEROLE PASSWORD "+validate.PGString(password))
+	return err
+}
+
+// ReassignOwnership pasa a "to" todo lo que posee "from" (bases, esquemas, tablas...) en cada base conectable
+// y quita los privilegios y default privileges que aún dependen de "from", para que pueda eliminarse.
+// Solo debe usarse justo antes de eliminar "from".
+func (e *Engine) ReassignOwnership(ctx context.Context, from, to string) error {
+	conn, err := e.connect(ctx, "postgres")
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	rows, err := conn.Query(ctx, "SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname")
+	if err != nil {
+		return err
+	}
+	var dbs []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			rows.Close()
+			return err
+		}
+		dbs = append(dbs, d)
+	}
+	rows.Close()
+	stmts := []string{
+		"REASSIGN OWNED BY " + validate.PGIdent(from) + " TO " + validate.PGIdent(to),
+		"DROP OWNED BY " + validate.PGIdent(from), // tras REASSIGN ya no posee objetos: solo quita privilegios
+	}
+	for _, d := range dbs {
+		c, err := e.connect(ctx, d)
+		if err != nil {
+			return err
+		}
+		err = execAll(ctx, c, stmts)
+		c.Close(ctx)
+		if err != nil {
+			return fmt.Errorf("no se pudo reasignar la propiedad en %s: %w", d, err)
+		}
+	}
+	return nil
+}
 
 func bestEffort(ctx context.Context, conn *pgx.Conn, stmts []string) {
 	for _, s := range stmts {

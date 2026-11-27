@@ -45,6 +45,53 @@ func (s *Store) GetSettings() (map[string]string, error) {
 	return out, rows.Err()
 }
 
+// ---------- Usuario root predeterminado ----------
+
+const (
+	// DefaultRootUser y DefaultRootPassword son el usuario administrador que DB Manager crea en cada servicio nuevo
+	// mientras el usuario no los cambie en Ajustes.
+	DefaultRootUser     = "root"
+	DefaultRootPassword = "root"
+
+	SettingRootUser        = "rootUser"
+	SettingRootPasswordEnc = "rootPasswordEnc" // cifrada; nunca se devuelve al frontend
+)
+
+// RootDefaults devuelve el usuario y la contraseña root predeterminados (en claro).
+func (s *Store) RootDefaults() (user, password string, err error) {
+	user, err = s.GetSetting(SettingRootUser)
+	if err != nil {
+		return "", "", err
+	}
+	if user == "" {
+		user = DefaultRootUser
+	}
+	enc, err := s.GetSetting(SettingRootPasswordEnc)
+	if err != nil {
+		return "", "", err
+	}
+	if enc == "" {
+		return user, DefaultRootPassword, nil
+	}
+	password, err = s.Decrypt(enc)
+	return user, password, err
+}
+
+// SetRootDefaults guarda el usuario y, si password != "", la contraseña root predeterminada (cifrada).
+func (s *Store) SetRootDefaults(user, password string) error {
+	if err := s.SetSetting(SettingRootUser, user); err != nil {
+		return err
+	}
+	if password == "" {
+		return nil
+	}
+	enc, err := s.Encrypt(password)
+	if err != nil {
+		return err
+	}
+	return s.SetSetting(SettingRootPasswordEnc, enc)
+}
+
 // ---------- Servers ----------
 
 // Server es el registro persistido. AdminPasswordEnc está cifrado (AES-GCM, base64);

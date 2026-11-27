@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {Archive, Database, FileText, Grid3x3, Info, RotateCcw, Users} from 'lucide-react'
+import {Archive, Database, FileText, Grid3x3, Info, Layers, RotateCcw, Settings, Users} from 'lucide-react'
 import {useApp, type TabKey} from '../store'
 import {Card, EmptyState, PageHeader, Tabs} from '../components/ui'
 import {EngineBadge, StatusDot} from '../components/Sidebar'
@@ -10,6 +10,8 @@ import PermissionsTab from './server/PermissionsTab'
 import BackupsTab from './server/BackupsTab'
 import RestoresTab from './server/RestoresTab'
 import LogsTab from './server/LogsTab'
+import SchemasTab from './server/SchemasTab'
+import ConfigTab from './server/ConfigTab'
 
 export default function ServerPage({id, tab, restoreFile}: {id: number; tab?: TabKey; restoreFile?: string}) {
   const {servers, serversLoaded, statuses} = useApp()
@@ -32,9 +34,11 @@ export default function ServerPage({id, tab, restoreFile}: {id: number; tab?: Ta
     {key: 'databases', label: 'Bases de datos', icon: <Database size={15}/>},
     {key: 'users', label: 'Usuarios', icon: <Users size={15}/>},
     {key: 'permissions', label: 'Permisos', icon: <Grid3x3 size={15}/>},
+    {key: 'schemas', label: 'Esquemas', icon: <Layers size={15}/>},
     {key: 'backups', label: 'Backups', icon: <Archive size={15}/>},
     {key: 'restores', label: 'Restauraciones', icon: <RotateCcw size={15}/>},
     ...(local ? [{key: 'logs' as TabKey, label: 'Logs', icon: <FileText size={15}/>}] : []),
+    {key: 'config', label: 'Configuración', icon: <Settings size={15}/>},
   ]
   const active = tabs.some(t => t.key === current) ? current : 'summary'
   const needsRunning = local && state && state !== 'running' && active !== 'summary' && active !== 'logs'
@@ -53,8 +57,10 @@ export default function ServerPage({id, tab, restoreFile}: {id: number; tab?: Ta
             {active === 'databases' && <DatabasesTab server={server}/>}
             {active === 'users' && <UsersTab server={server}/>}
             {active === 'permissions' && <PermissionsTab server={server}/>}
+            {active === 'schemas' && <SchemasTab server={server}/>}
             {active === 'backups' && <BackupsTab server={server} onRestore={f => { setPendingRestore(f); setCurrent('restores') }}/>}
             {active === 'restores' && <RestoresTab server={server} initialFile={pendingRestore} onConsumed={() => setPendingRestore(undefined)}/>}
+            {active === 'config' && <ConfigTab server={server}/>}
           </>}
         {active === 'logs' && <LogsTab server={server}/>}
       </div>

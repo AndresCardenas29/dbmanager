@@ -39,6 +39,21 @@ export const api = {
   getPermissionMatrix: (id: number) => x<T.PermissionMatrix>(G.GetPermissionMatrix(id)),
   setDatabaseAccess: (id: number, login: string, db: string, level: T.AccessLevel) =>
     G.SetDatabaseAccess(id, login, db, level),
+  createDatabaseUser: (id: number, db: string, r: T.CreateLoginRequest, level: T.AccessLevel) =>
+    G.CreateDatabaseUser(id, db, a(r), level),
+
+  listSchemas: async (id: number, db: string) => (await x<T.SchemaInfo[] | null>(G.ListSchemas(id, db))) ?? [],
+  createSchema: (id: number, db: string, name: string) => G.CreateSchema(id, db, name),
+  listObjectGrants: async (id: number, db: string) => (await x<T.ObjectGrant[] | null>(G.ListObjectGrants(id, db))) ?? [],
+  setObjectGrant: (id: number, db: string, r: T.ObjectGrantRequest) => G.SetObjectGrant(id, db, a(r)),
+  listConnectionUsers: async (id: number, db: string) => (await x<T.ConnectionUser[] | null>(G.ListConnectionUsers(id, db))) ?? [],
+  getLoginPassword: (id: number, login: string) => G.GetLoginPassword(id, login),
+  rememberLoginPassword: (id: number, login: string, pw: string) => G.RememberLoginPassword(id, login, pw),
+
+  getRootDefaults: () => x<T.RootDefaults>(G.GetRootDefaults()),
+  setRootDefaults: (user: string, password: string) => G.SetRootDefaults(user, password),
+  getRootStatus: (id: number) => x<T.RootStatus>(G.GetRootStatus(id)),
+  configureRoot: (id: number, r: T.ConfigureRootRequest) => x<T.ConfigureRootResult>(G.ConfigureRoot(id, a(r))),
 
   pickFile: (title: string, filters: T.FileFilter[]) => G.PickFile(title, a(filters)),
   pickDirectory: (title: string) => G.PickDirectory(title),

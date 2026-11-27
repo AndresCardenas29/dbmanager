@@ -1,31 +1,42 @@
-import {useState} from 'react'
-import {Pencil, Play, RefreshCw, RotateCw, Square, Trash2, Plug} from 'lucide-react'
+import {useEffect, useState} from 'react'
+import {Check, Copy, Eye, EyeOff, Pencil, Play, RefreshCw, RotateCw, Square, Trash2, Plug} from 'lucide-react'
 import {api, errMsg, type Server, type ServerStatus} from '../../api'
 import {useApp} from '../../store'
 import {useAsync} from '../../hooks/useAsync'
 import {useToast} from '../../components/Toast'
 import {
-  Badge, Button, Card, Checkbox, ConfirmDialog, CopyButton, engineLabel, ErrorBanner, Field, fmtDate, Input, Modal,
+  Badge, Button, Card, Checkbox, ConfirmDialog, engineLabel, ErrorBanner, Field, fmtDate, IconButton, Input, Modal,
   Notice, PasswordInput, Select,
 } from '../../components/ui'
 
 const stateLabel: Record<string, string> = {running: 'En ejecución', stopped: 'Detenido', missing: 'Contenedor no encontrado', remote: 'Remoto'}
 
-function connStrings(s: Server): Record<string, string> {
+function connStrings(s: Server, u: string, db: string, pw: string): Record<string, string> {
   const host = s.host || 'localhost'
-  const u = s.adminUser || (s.engine === 'mssql' ? 'sa' : 'postgres')
-  const pw = 'TU_CONTRASEÑA'
   if (s.engine === 'mssql') return {
-    '.NET': `Server=${host},${s.port};User Id=${u};Password=${pw};Encrypt=${s.tls};TrustServerCertificate=${s.mode === 'local' ? 'True' : s.trustServerCert ? 'True' : 'False'};`,
-    JDBC: `jdbc:sqlserver://${host}:${s.port};user=${u};password=${pw};encrypt=${s.tls};trustServerCertificate=true`,
-    'sqlcmd': `sqlcmd -S ${host},${s.port} -U ${u} -P "${pw}" -C`,
+    '.NET': `Server=${host},${s.port};${db ? `Database=${db};` : ''}User Id=${u};Password=${pw};Encrypt=${s.tls};TrustServerCertificate=${s.mode === 'local' ? 'True' : s.trustServerCert ? 'True' : 'False'};`,
+    JDBC: `jdbc:sqlserver://${host}:${s.port};${db ? `databaseName=${db};` : ''}user=${u};password=${pw};encrypt=${s.tls};trustServerCertificate=true`,
+    'sqlcmd': `sqlcmd -S ${host},${s.port}${db ? ` -d ${db}` : ''} -U ${u} -P "${pw}" -C`,
   }
   const ssl = s.tls ? 'require' : 'disable'
+  const d = db || 'postgres'
   return {
-    '.NET': `Host=${host};Port=${s.port};Username=${u};Password=${pw};Database=postgres;SSL Mode=${s.tls ? 'Require' : 'Disable'}`,
-    JDBC: `jdbc:postgresql://${host}:${s.port}/postgres?user=${u}&password=${pw}&sslmode=${ssl}`,
-    psql: `psql "postgresql://${u}@${host}:${s.port}/postgres?sslmode=${ssl}"`,
+    '.NET': `Host=${host};Port=${s.port};Username=${u};Password=${pw};Database=${d};SSL Mode=${s.tls ? 'Require' : 'Disable'}`,
+    JDBC: `jdbc:postgresql://${host}:${s.port}/${d}?user=${u}&password=${pw}&sslmode=${ssl}`,
+    psql: `psql "postgresql://${u}:${pw}@${host}:${s.port}/${d}?sslmode=${ssl}"`,
   }
+}
+
+const MASK = '••••••••'
+const PLACEHOLDER = 'TU_CONTRASEÑA'
+
+function AsyncCopy({getText, label}: {getText: () => Promise<string>; label: string}) {
+  const [ok, setOk] = useState(false)
+  return (
+    <IconButton label={ok ? 'Copiado' : label} onClick={async () => {
+      try { await navigator.clipboard.writeText(await getText()); setOk(true); setTimeout(() => setOk(false), 1500) } catch { /* ignorar */ }
+    }}>{ok ? <Check size={15} className="text-success"/> : <Copy size={15}/>}</IconButton>
+  )
 }
 
 export default function SummaryTab({server}: {server: Server}) {
@@ -42,9 +53,48 @@ export default function SummaryTab({server}: {server: Server}) {
   const [busy, setBusy] = useState('')
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const strings = connStrings(server)
+  const [db, setDb] = useState('')
+  const [user, setUser] = useState('')
+  const [pws, setPws] = useState<Record<string, string>>({})
+  const [shown, setShown] = useState(false)
+  const [newPw, setNewPw] = useState('')
+  const [savingPw, setSavingPw] = useState(false)
+  const running = !local || status.data?.state === 'running'
+  const dbList = useAsync(async () => (running ? (await api.listDatabases(server.id)).filter(d => !d.system) : []), [server.id, running])
+  const cusers = useAsync(async () => (running ? api.listConnectionUsers(server.id, db) : []), [server.id, db, running])
+  const cuList = cusers.data ?? []
+  const cu = cuList.find(u => u.login === user) ?? cuList[0]
+  const login = cu?.login || server.adminUser
+  const known = pws[login]
+  const hasPw = cu ? cu.hasPassword : true
+  const fetchPw = async (): Promise<string> => {
+    if (pws[login] !== undefined) return pws[login]
+    let v = ''
+    try { v = await api.getLoginPassword(server.id, login) } catch { v = '' }
+    setPws(p => ({...p, [login]: v}))
+    return v
+  }
+  useEffect(() => { setShown(false); setNewPw('') }, [login, db])
+  const unknownPw = !hasPw || (known !== undefined && known === '')
+  const strings = connStrings(server, login, db, shown && known ? known : MASK)
   const keys = Object.keys(strings)
   const [fmt, setFmt] = useState<string>(keys[0])
+  const reveal = async () => {
+    if (shown) { setShown(false); return }
+    await fetchPw(); setShown(true)
+  }
+  const savePw = async () => {
+    setSavingPw(true)
+    try {
+      await api.rememberLoginPassword(server.id, login, newPw)
+      toast.success('Contraseña guardada.')
+      setPws(p => ({...p, [login]: newPw})); setNewPw(''); await cusers.reload()
+    } catch (e) { toast.error(e) } finally { setSavingPw(false) }
+  }
+  const copyConn = async () => {
+    const pw = hasPw ? await fetchPw() : ''
+    return connStrings(server, login, db, pw || PLACEHOLDER)[fmt]
+  }
   const state = local ? status.data?.state : 'remote'
 
   const act = async (kind: 'start' | 'stop' | 'restart') => {
@@ -95,6 +145,34 @@ export default function SummaryTab({server}: {server: Server}) {
           <dt className="text-muted">Host</dt><dd className="font-mono text-xs leading-5">{server.host || 'localhost'}</dd>
           <dt className="text-muted">Puerto</dt><dd className="font-mono text-xs leading-5">{server.port}</dd>
           <dt className="text-muted">Usuario administrador</dt><dd className="font-mono text-xs leading-5">{server.adminUser}</dd>
+          <dt className="text-muted"><label htmlFor="conn-db">Base de datos</label></dt>
+          <dd><Select id="conn-db" className="!h-8 max-w-xs text-xs" value={db} onChange={e => setDb(e.target.value)}>
+            <option value="">(ninguna)</option>
+            {(dbList.data ?? []).map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+          </Select></dd>
+          <dt className="text-muted"><label htmlFor="conn-user">Usuario</label></dt>
+          <dd><Select id="conn-user" className="!h-8 max-w-xs text-xs" value={login} onChange={e => setUser(e.target.value)}>
+            {cuList.length === 0 && <option value={server.adminUser}>{server.adminUser}</option>}
+            {cuList.map(u => <option key={u.login} value={u.login}>{u.isRoot ? 'root (administrador)' : u.level ? `${u.login} (${u.level})` : u.login}</option>)}
+          </Select></dd>
+          <dt className="text-muted">Contraseña</dt>
+          <dd>
+            {unknownPw ? (
+              <div className="space-y-2">
+                <span className="text-muted">Desconocida</span>
+                <form className="flex max-w-sm items-center gap-2" onSubmit={e => { e.preventDefault(); if (newPw && !savingPw) void savePw() }}>
+                  <div className="min-w-0 flex-1"><PasswordInput value={newPw} onChange={setNewPw} placeholder="Contraseña de este usuario"/></div>
+                  <Button type="submit" size="sm" variant="primary" disabled={!newPw} loading={savingPw}>Guardar contraseña</Button>
+                </form>
+              </div>
+            ) : (
+              <span className="flex items-center gap-1">
+                <span className="font-mono text-xs leading-5">{shown && known ? known : MASK}</span>
+                <IconButton label={shown ? 'Ocultar contraseña' : 'Mostrar contraseña'} onClick={() => void reveal()}>{shown ? <EyeOff size={15}/> : <Eye size={15}/>}</IconButton>
+                <AsyncCopy label="Copiar contraseña" getText={fetchPw}/>
+              </span>
+            )}
+          </dd>
           {local && <><dt className="text-muted">Contenedor</dt><dd className="font-mono text-xs leading-5">{server.containerName}</dd>
             <dt className="text-muted">Imagen</dt><dd className="break-all font-mono text-xs leading-5">{server.image}</dd>
             <dt className="text-muted">Datos</dt><dd className="break-all">{server.dataMode === 'bind' ? `Carpeta: ${server.dataPath}` : server.dataMode === 'volume' ? `Volumen: ${server.dataPath || '(automático)'}` : '—'}</dd></>}
@@ -103,9 +181,9 @@ export default function SummaryTab({server}: {server: Server}) {
         </dl>
         <div className="flex items-start gap-2 rounded-md border border-line bg-surface2 p-3">
           <code className="min-w-0 flex-1 break-all font-mono text-xs leading-5">{strings[fmt]}</code>
-          <CopyButton text={strings[fmt]} label="Copiar cadena de conexión"/>
+          <AsyncCopy label="Copiar cadena de conexión" getText={copyConn}/>
         </div>
-        <p className="mt-2 text-xs text-muted">Sustituye TU_CONTRASEÑA por la contraseña del servidor; DB Manager no la muestra.</p>
+        <p className="mt-2 text-xs text-muted">La contraseña se muestra oculta; el botón de copiar incluye la contraseña real{unknownPw ? ` (desconocida: se copiará ${PLACEHOLDER}; guárdala arriba)` : ""}.</p>
       </Card>
 
       <Card title="Administrar">
@@ -156,7 +234,7 @@ function EditModal({server, onClose, onSaved}: {server: Server; onClose: () => v
         </div>
         {local && <p className="-mt-2 text-xs text-muted">Host y puerto de un servicio local los define su contenedor.</p>}
         <Field label="Usuario administrador">{id => <Input id={id} value={user} onChange={e => setUser(e.target.value)}/>}</Field>
-        <Field label="Nueva contraseña" hint="Déjala vacía para conservar la actual. Esto actualiza la contraseña guardada en DB Manager.">
+        <Field label="Nueva contraseña" hint="Déjala vacía para conservar la actual. Esto actualiza la contraseña guardada en Andres Tools.">
           {id => <PasswordInput id={id} autoComplete="off" value={pw} onChange={setPw}/>}
         </Field>
         {!local && <div className="space-y-2">
@@ -184,12 +262,12 @@ function DeleteDialog({server, onClose, onDone}: {server: Server; onClose: () =>
         } catch (e) { toast.error(e); throw e }
       }}>
       {local ? <>
-        <p>Vas a eliminar <b>{server.name}</b> de DB Manager.</p>
+        <p>Vas a eliminar <b>{server.name}</b> de Andres Tools.</p>
         <Checkbox label="Eliminar también el contenedor de Docker" checked={rmContainer} onChange={e => { setRmContainer(e.target.checked); if (!e.target.checked) setRmData(false) }}/>
         <Checkbox label="Eliminar también los datos (volumen o carpeta)" disabled={!rmContainer} checked={rmData} onChange={e => setRmData(e.target.checked)}
           hint="Esta acción borra las bases de datos de forma irreversible."/>
         {rmData && <Notice tone="danger">Se perderán todas las bases de datos de este servicio. No se puede deshacer.</Notice>}
-      </> : <p>Se quitará <b>{server.name}</b> de DB Manager. El servidor remoto no se modifica.</p>}
+      </> : <p>Se quitará <b>{server.name}</b> de Andres Tools. El servidor remoto no se modifica.</p>}
     </ConfirmDialog>
   )
 }

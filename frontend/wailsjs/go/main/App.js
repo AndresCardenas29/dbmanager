@@ -22,6 +22,10 @@ export function CheckEnvironment() {
   return window['go']['main']['App']['CheckEnvironment']();
 }
 
+export function ConfigureRoot(arg1, arg2) {
+  return window['go']['main']['App']['ConfigureRoot'](arg1, arg2);
+}
+
 export function CreateBackup(arg1) {
   return window['go']['main']['App']['CreateBackup'](arg1);
 }
@@ -30,12 +34,24 @@ export function CreateDatabase(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateDatabase'](arg1, arg2, arg3);
 }
 
+export function CreateDatabaseUser(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreateDatabaseUser'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateLocalService(arg1) {
   return window['go']['main']['App']['CreateLocalService'](arg1);
 }
 
 export function CreateLogin(arg1, arg2) {
   return window['go']['main']['App']['CreateLogin'](arg1, arg2);
+}
+
+export function CreateSchema(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateSchema'](arg1, arg2, arg3);
+}
+
+export function CreateSftpFolder(arg1, arg2) {
+  return window['go']['main']['App']['CreateSftpFolder'](arg1, arg2);
 }
 
 export function CreateSftpService(arg1) {
@@ -48,6 +64,10 @@ export function CreateSftpUser(arg1, arg2) {
 
 export function DeleteServer(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeleteServer'](arg1, arg2, arg3);
+}
+
+export function DeleteSftpFolder(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeleteSftpFolder'](arg1, arg2, arg3);
 }
 
 export function DeleteSftpService(arg1, arg2, arg3) {
@@ -66,8 +86,24 @@ export function DropLogin(arg1, arg2) {
   return window['go']['main']['App']['DropLogin'](arg1, arg2);
 }
 
+export function GetLoginPassword(arg1, arg2) {
+  return window['go']['main']['App']['GetLoginPassword'](arg1, arg2);
+}
+
+export function GetMcpInfo() {
+  return window['go']['main']['App']['GetMcpInfo']();
+}
+
 export function GetPermissionMatrix(arg1) {
   return window['go']['main']['App']['GetPermissionMatrix'](arg1);
+}
+
+export function GetRootDefaults() {
+  return window['go']['main']['App']['GetRootDefaults']();
+}
+
+export function GetRootStatus(arg1) {
+  return window['go']['main']['App']['GetRootStatus'](arg1);
 }
 
 export function GetServer(arg1) {
@@ -110,6 +146,10 @@ export function ListCertificateHistory(arg1) {
   return window['go']['main']['App']['ListCertificateHistory'](arg1);
 }
 
+export function ListConnectionUsers(arg1, arg2) {
+  return window['go']['main']['App']['ListConnectionUsers'](arg1, arg2);
+}
+
 export function ListDatabases(arg1) {
   return window['go']['main']['App']['ListDatabases'](arg1);
 }
@@ -126,6 +166,10 @@ export function ListLogins(arg1) {
   return window['go']['main']['App']['ListLogins'](arg1);
 }
 
+export function ListObjectGrants(arg1, arg2) {
+  return window['go']['main']['App']['ListObjectGrants'](arg1, arg2);
+}
+
 export function ListOperations(arg1) {
   return window['go']['main']['App']['ListOperations'](arg1);
 }
@@ -134,8 +178,16 @@ export function ListRestores(arg1) {
   return window['go']['main']['App']['ListRestores'](arg1);
 }
 
+export function ListSchemas(arg1, arg2) {
+  return window['go']['main']['App']['ListSchemas'](arg1, arg2);
+}
+
 export function ListServers() {
   return window['go']['main']['App']['ListServers']();
+}
+
+export function ListSftpFolders(arg1) {
+  return window['go']['main']['App']['ListSftpFolders'](arg1);
 }
 
 export function ListSftpServices() {
@@ -144,6 +196,10 @@ export function ListSftpServices() {
 
 export function ListSftpUsers(arg1) {
   return window['go']['main']['App']['ListSftpUsers'](arg1);
+}
+
+export function OpenSftpFolder(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenSftpFolder'](arg1, arg2, arg3);
 }
 
 export function PickDirectory(arg1) {
@@ -156,6 +212,10 @@ export function PickFile(arg1, arg2) {
 
 export function ProgressEventType() {
   return window['go']['main']['App']['ProgressEventType']();
+}
+
+export function RememberLoginPassword(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RememberLoginPassword'](arg1, arg2, arg3);
 }
 
 export function RemoveSftpUserKey(arg1, arg2, arg3) {
@@ -190,12 +250,28 @@ export function SetDatabaseAccess(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetDatabaseAccess'](arg1, arg2, arg3, arg4);
 }
 
+export function SetMcpSettings(arg1) {
+  return window['go']['main']['App']['SetMcpSettings'](arg1);
+}
+
+export function SetObjectGrant(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetObjectGrant'](arg1, arg2, arg3);
+}
+
+export function SetRootDefaults(arg1, arg2) {
+  return window['go']['main']['App']['SetRootDefaults'](arg1, arg2);
+}
+
 export function SetServerRoles(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetServerRoles'](arg1, arg2, arg3);
 }
 
 export function SetSetting(arg1, arg2) {
   return window['go']['main']['App']['SetSetting'](arg1, arg2);
+}
+
+export function SetSftpFolderAccess(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetSftpFolderAccess'](arg1, arg2, arg3, arg4);
 }
 
 export function SetSftpUserPassword(arg1, arg2, arg3) {
@@ -228,6 +304,10 @@ export function StopSftpService(arg1) {
 
 export function TestConnection(arg1) {
   return window['go']['main']['App']['TestConnection'](arg1);
+}
+
+export function TestMcpServer() {
+  return window['go']['main']['App']['TestMcpServer']();
 }
 
 export function TestRemoteConnection(arg1) {

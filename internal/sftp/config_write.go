@@ -9,6 +9,11 @@ import (
 // WriteConfig escribe en base: users.conf, hooks/10-persist-host-keys.sh, keys/<usuario>/*.pub y
 // hostkeys/ (las llaves de host solo se generan si no existen). Nunca escribe llaves privadas de cliente.
 func WriteConfig(base string, users []UserCfg) (ConfigPaths, error) {
+	return WriteConfigShared(base, users, nil)
+}
+
+// WriteConfigShared es WriteConfig incluyendo las carpetas compartidas en el hook.
+func WriteConfigShared(base string, users []UserCfg, shared []SharedMount) (ConfigPaths, error) {
 	p := Paths(base)
 	for _, d := range []string{base, p.HooksDir, p.KeysDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -21,7 +26,7 @@ func WriteConfig(base string, users []UserCfg) (ConfigPaths, error) {
 	if err := os.WriteFile(p.UsersConf, []byte(UsersConf(users)), 0o644); err != nil {
 		return p, err
 	}
-	if err := os.WriteFile(filepath.Join(p.HooksDir, "10-persist-host-keys.sh"), []byte(HookScript(users)), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(p.HooksDir, "10-persist-host-keys.sh"), []byte(HookScriptShared(users, shared)), 0o755); err != nil {
 		return p, err
 	}
 	// Se regenera por completo el árbol de llaves públicas.

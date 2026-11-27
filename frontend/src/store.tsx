@@ -4,15 +4,15 @@ import {useInterval} from './hooks/useInterval'
 import {api2, type SftpService} from './api/v2'
 import {useTheme, type ThemePref} from './hooks/useTheme'
 
-export type TabKey = 'summary' | 'databases' | 'users' | 'permissions' | 'backups' | 'restores' | 'logs'
-export type SftpTab = 'summary' | 'users' | 'test' | 'logs'
+export type TabKey = 'summary' | 'databases' | 'users' | 'permissions' | 'schemas' | 'backups' | 'restores' | 'logs' | 'config'
+export type SftpTab = 'summary' | 'users' | 'folders' | 'test' | 'logs'
 export type View =
   | {page: 'home'}
   | {page: 'server'; id: number; tab?: TabKey; restoreFile?: string}
   | {page: 'new'} | {page: 'import'} | {page: 'remote'}
   | {page: 'sftpNew'} | {page: 'sftpImport'} | {page: 'sftp'; id: number; tab?: SftpTab}
   | {page: 'certP12'} | {page: 'certVerify'} | {page: 'certHistory'}
-  | {page: 'history'} | {page: 'settings'}
+  | {page: 'history'} | {page: 'settings'} | {page: 'mcp'}
 
 interface AppCtx {
   view: View

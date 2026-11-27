@@ -25,10 +25,14 @@ func TestDetectFormat(t *testing.T) {
 }
 
 func TestClassifyLevel(t *testing.T) {
-	if ClassifyLevel(true, false, false, false) != "owner" ||
-		ClassifyLevel(false, true, true, true) != "readwrite" ||
-		ClassifyLevel(false, true, true, false) != "readonly" ||
-		ClassifyLevel(false, false, false, false) != "none" {
+	if ClassifyLevel(true, false, false, false, false) != "owner" ||
+		ClassifyLevel(false, true, true, true, false) != "readwrite" ||
+		ClassifyLevel(false, true, true, false, true) != "readonly" ||
+		ClassifyLevel(false, false, false, false, false) != "none" ||
+		ClassifyLevel(false, true, false, false, false) != "none" ||
+		ClassifyLevel(false, true, false, false, true) != "custom" ||
+		ClassifyLevel(false, true, true, false, false) != "readonly" ||
+		ClassifyLevel(false, false, true, true, true) != "custom" {
 		t.Fatal("clasificación")
 	}
 }

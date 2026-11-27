@@ -66,11 +66,22 @@ func (a *App) CreateLocalService(req CreateServiceRequest) (Server, error) {
 	if err != nil {
 		return Server{}, err
 	}
+	rootUser, rootPw, err := a.store.RootDefaults()
+	if err != nil {
+		return Server{}, err
+	}
+	if u := strings.TrimSpace(req.RootUser); u != "" {
+		rootUser = u
+	}
+	if req.RootPassword != "" {
+		rootPw = req.RootPassword
+	}
 	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Minute)
 	defer cancel()
 	sv, err := svc.CreateLocal(ctx, services.CreateRequest{RequestID: req.RequestID, Name: req.Name, Engine: req.Engine,
 		Image: req.Image, Port: req.Port, AdminPassword: req.AdminPassword, DataMode: req.DataMode, DataPath: req.DataPath,
-		MemoryMB: req.MemoryMB, Edition: req.Edition, ExposeOnNetwork: req.ExposeOnNetwork})
+		MemoryMB: req.MemoryMB, Edition: req.Edition, ExposeOnNetwork: req.ExposeOnNetwork,
+		RootUser: rootUser, RootPassword: rootPw})
 	if err != nil {
 		a.logOp(0, "create-service", req.Name, err)
 		return Server{}, friendlyDBErr(err)
@@ -151,6 +162,75 @@ func (a *App) TestRemoteConnection(req RemoteServerRequest) (ServerStatus, error
 	return ServerStatus{State: "remote", Reachable: true, Version: v, Message: "Conexión exitosa."}, nil
 }
 
+// ---------- Usuario root ----------
+
+// GetRootDefaults devuelve el usuario root que se crea en los servicios nuevos (sin la contraseña).
+func (a *App) GetRootDefaults() (RootDefaults, error) {
+	st, err := a.db()
+	if err != nil {
+		return RootDefaults{}, err
+	}
+	u, pw, err := st.RootDefaults()
+	if err != nil {
+		return RootDefaults{}, err
+	}
+	return RootDefaults{User: u, PasswordIsDefault: pw == store.DefaultRootPassword}, nil
+}
+
+// SetRootDefaults guarda el usuario root predeterminado; password vacío = conservar la actual.
+func (a *App) SetRootDefaults(user string, password string) error {
+	st, err := a.db()
+	if err != nil {
+		return err
+	}
+	user = strings.TrimSpace(user)
+	for _, eng := range []string{validate.EngineMSSQL, validate.EnginePostgres} {
+		if err := services.ValidateRootUser(eng, user); err != nil {
+			return err
+		}
+	}
+	err = st.SetRootDefaults(user, password)
+	a.logOp(0, "set-root-defaults", user, err)
+	return err
+}
+
+// GetRootStatus indica con qué usuario se administra el servidor y si es administrador total.
+func (a *App) GetRootStatus(serverId int64) (RootStatus, error) {
+	svc, err := a.services()
+	if err != nil {
+		return RootStatus{}, err
+	}
+	sv, err := a.store.GetServer(serverId)
+	if err != nil {
+		return RootStatus{}, friendlyDBErr(err)
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 40*time.Second)
+	defer cancel()
+	r := svc.RootStatus(ctx, sv)
+	return RootStatus{User: r.User, Reachable: r.Reachable, IsAdmin: r.IsAdmin, Message: r.Message}, nil
+}
+
+// ConfigureRoot crea o cambia el usuario root del servidor (en el motor y en DB Manager).
+func (a *App) ConfigureRoot(serverId int64, req ConfigureRootRequest) (ConfigureRootResult, error) {
+	svc, err := a.services()
+	if err != nil {
+		return ConfigureRootResult{}, err
+	}
+	sv, err := a.store.GetServer(serverId)
+	if err != nil {
+		return ConfigureRootResult{}, friendlyDBErr(err)
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+	defer cancel()
+	upd, warning, err := svc.ConfigureRoot(ctx, sv, services.ConfigureRootRequest{User: req.User, Password: req.Password,
+		BootstrapUser: req.BootstrapUser, BootstrapPassword: req.BootstrapPassword, DropPrevious: req.DropPrevious})
+	if err != nil {
+		a.logOp(serverId, "configure-root", sv.Name, err)
+		return ConfigureRootResult{}, friendlyDBErr(err)
+	}
+	return ConfigureRootResult{Server: toServer(upd), Warning: warning}, nil
+}
+
 // ---------- Bases de datos ----------
 
 func (a *App) ListDatabases(serverId int64) ([]Database, error) {
@@ -203,19 +283,32 @@ func (a *App) ListLogins(serverId int64) ([]Login, error) {
 
 func (a *App) CreateLogin(serverId int64, req CreateLoginRequest) error {
 	return a.withEngine(serverId, time.Minute, func(ctx context.Context, sv store.Server, e engine.Engine) error {
-		return a.opErr(serverId, "create-login", sv.Name+"/"+req.Name, e.CreateLogin(ctx, strings.TrimSpace(req.Name), req.Password, req.ServerRoles))
+		name := strings.TrimSpace(req.Name)
+		err := a.opErr(serverId, "create-login", sv.Name+"/"+req.Name, e.CreateLogin(ctx, name, req.Password, req.ServerRoles))
+		if err == nil {
+			a.saveLoginSecret(serverId, name, req.Password)
+		}
+		return err
 	})
 }
 
 func (a *App) DropLogin(serverId int64, name string) error {
 	return a.withEngine(serverId, time.Minute, func(ctx context.Context, sv store.Server, e engine.Engine) error {
-		return a.opErr(serverId, "drop-login", sv.Name+"/"+name, e.DropLogin(ctx, name))
+		err := a.opErr(serverId, "drop-login", sv.Name+"/"+name, e.DropLogin(ctx, name))
+		if err == nil && a.store != nil {
+			a.store.DeleteLoginSecret(serverId, name) // mejor esfuerzo
+		}
+		return err
 	})
 }
 
 func (a *App) ChangePassword(serverId int64, name string, password string) error {
 	return a.withEngine(serverId, time.Minute, func(ctx context.Context, sv store.Server, e engine.Engine) error {
-		return a.opErr(serverId, "change-password", sv.Name+"/"+name, e.ChangePassword(ctx, name, password))
+		err := a.opErr(serverId, "change-password", sv.Name+"/"+name, e.ChangePassword(ctx, name, password))
+		if err == nil {
+			a.saveLoginSecret(serverId, name, password)
+		}
+		return err
 	})
 }
 
@@ -239,6 +332,32 @@ func (a *App) GetPermissionMatrix(serverId int64) (PermissionMatrix, error) {
 		return nil
 	})
 	return out, err
+}
+
+// CreateDatabaseUser crea un login sin roles de servidor con acceso solo a una base de datos.
+// Así cada base tiene sus propios usuarios y el root es el único con acceso a todas.
+func (a *App) CreateDatabaseUser(serverId int64, database string, req CreateLoginRequest, level string) error {
+	if level == "" || level == "none" {
+		return errors.New("elija el nivel de acceso del usuario en la base de datos")
+	}
+	return a.withEngine(serverId, 2*time.Minute, func(ctx context.Context, sv store.Server, e engine.Engine) error {
+		name := strings.TrimSpace(req.Name)
+		target := fmt.Sprintf("%s/%s/%s=%s", sv.Name, database, name, level)
+		if ok, err := e.DatabaseExists(ctx, database); err != nil {
+			return err
+		} else if !ok {
+			return fmt.Errorf("la base de datos %q no existe", database)
+		}
+		if err := e.CreateLogin(ctx, name, req.Password, nil); err != nil {
+			return a.opErr(serverId, "create-db-user", target, err)
+		}
+		if err := e.SetDatabaseAccess(ctx, name, database, level); err != nil {
+			e.DropLogin(ctx, name) // deshace: no dejar un login suelto sin acceso
+			return a.opErr(serverId, "create-db-user", target, fmt.Errorf("no se pudo dar acceso a la base de datos: %w", err))
+		}
+		a.saveLoginSecret(serverId, name, req.Password)
+		return a.opErr(serverId, "create-db-user", target, nil)
+	})
 }
 
 func (a *App) SetDatabaseAccess(serverId int64, login string, database string, level string) error {

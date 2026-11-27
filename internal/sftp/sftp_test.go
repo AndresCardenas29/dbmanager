@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"dbmanager/internal/dockerx"
+	"dbmanager/internal/store"
 
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/ssh"
@@ -256,5 +257,62 @@ func TestIsSftpContainer(t *testing.T) {
 		if got := IsSftpContainer(c.info); got != c.want {
 			t.Errorf("%s: %v", c.name, got)
 		}
+	}
+}
+
+func TestSharedMountsAndHook(t *testing.T) {
+	us := []UserCfg{{Name: "alice", UID: 1001, UploadDir: "upload"}, {Name: "bob", UID: 1002, UploadDir: "upload"}}
+	sh := []SharedMount{{User: "alice", Folder: "docs"}, {User: "bob", Folder: "docs", ReadOnly: true}}
+	h := HookScriptShared(us, sh)
+	if strings.Contains(h, "\r") {
+		t.Fatal("el script debe usar LF")
+	}
+	if !strings.Contains(h, `chown root:100 "/home/alice/docs"`) || !strings.Contains(h, `chmod 2775 "/home/alice/docs"`) {
+		t.Fatalf("falta ajuste rw: %s", h)
+	}
+	if strings.Contains(h, "/home/bob/docs") {
+		t.Fatalf("solo lectura no debe ajustarse: %s", h)
+	}
+	if HookScript(us) != HookScriptShared(us, nil) {
+		t.Fatal("HookScript debe equivaler a sin compartidas")
+	}
+	vb, vv := BuildSharedMounts("volume", "svc-data", sh)
+	if len(vb) != 0 || len(vv) != 2 || vv[0].Name != "svc-data-shared-docs" || vv[0].Target != "/home/alice/docs" || vv[0].ReadOnly || !vv[1].ReadOnly {
+		t.Fatalf("volúmenes: %+v %+v", vb, vv)
+	}
+	bb, bv := BuildSharedMounts("bind", filepath.Join("C:", "data"), sh)
+	if len(bv) != 0 || len(bb) != 2 || bb[0].Source != filepath.Join("C:", "data", "_shared", "docs") || !bb[1].ReadOnly || bb[1].Target != "/home/bob/docs" {
+		t.Fatalf("binds: %+v %+v", bb, bv)
+	}
+}
+
+func TestValidFolderName(t *testing.T) {
+	us := []store.SftpUser{{Name: "alice", UploadDir: "upload"}, {Name: "shared-pics", UploadDir: "x"}}
+	fs := []store.SftpFolder{{Name: "docs"}}
+	if err := ValidFolderName("reports", us, fs); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"", "a/b", "..", ".ssh", "upload", "UPLOAD", "docs", "Docs", "pics"} {
+		if ValidFolderName(bad, us, fs) == nil {
+			t.Errorf("%q debería rechazarse", bad)
+		}
+	}
+	if checkUserVsFolders("carol", "docs", fs) == nil || checkUserVsFolders("shared-docs", "up", fs) == nil || checkUserVsFolders("carol", "up", fs) != nil {
+		t.Fatal("checkUserVsFolders")
+	}
+}
+
+func TestResolveVolumeDir(t *testing.T) {
+	d := t.TempDir()
+	os.MkdirAll(filepath.Join(d, "b2", "vol1", "_data"), 0o755)
+	bases := []string{filepath.Join(d, "b1"), filepath.Join(d, "b2")}
+	if p, ok := resolveVolumeDir("vol1", bases); !ok || p != filepath.Join(d, "b2", "vol1", "_data") {
+		t.Fatalf("%q %v", p, ok)
+	}
+	if _, ok := resolveVolumeDir("nope", bases); ok {
+		t.Fatal("no debería existir")
+	}
+	if p, ok := resolveVolumeDir("", bases); !ok || p != filepath.Join(d, "b2") {
+		t.Fatalf("%q %v", p, ok)
 	}
 }

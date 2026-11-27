@@ -44,6 +44,36 @@ type CreateServiceRequest struct {
 	MemoryMB        int    `json:"memoryMB"`
 	Edition         string `json:"edition"`         // mssql: Developer (por defecto) | Express | ...
 	ExposeOnNetwork bool   `json:"exposeOnNetwork"` // true = publicar en 0.0.0.0 (por defecto solo 127.0.0.1)
+	RootUser        string `json:"rootUser"`        // vacío = usuario root predeterminado de Ajustes
+	RootPassword    string `json:"rootPassword"`    // vacío = contraseña root predeterminada de Ajustes
+}
+
+// RootDefaults es el usuario root que se crea en cada servicio nuevo. La contraseña nunca se devuelve.
+type RootDefaults struct {
+	User              string `json:"user"`
+	PasswordIsDefault bool   `json:"passwordIsDefault"` // true = sigue siendo la contraseña de fábrica ("root")
+}
+
+// RootStatus indica con qué usuario administra DB Manager un servidor y si tiene permisos totales.
+type RootStatus struct {
+	User      string `json:"user"`
+	Reachable bool   `json:"reachable"`
+	IsAdmin   bool   `json:"isAdmin"`
+	Message   string `json:"message"`
+}
+
+// ConfigureRootRequest cambia o crea el usuario root de un servidor.
+type ConfigureRootRequest struct {
+	User              string `json:"user"`
+	Password          string `json:"password"`
+	BootstrapUser     string `json:"bootstrapUser"`     // opcional: admin (p. ej. sa) si el usuario actual no tiene permisos
+	BootstrapPassword string `json:"bootstrapPassword"`
+	DropPrevious      bool   `json:"dropPrevious"`
+}
+
+type ConfigureRootResult struct {
+	Server  Server `json:"server"`
+	Warning string `json:"warning"`
 }
 
 type ImportContainerRequest struct {
@@ -120,7 +150,7 @@ type CreateLoginRequest struct {
 type PermissionCell struct {
 	Login    string `json:"login"`
 	Database string `json:"database"`
-	Level    string `json:"level"` // owner | readwrite | readonly | none
+	Level    string `json:"level"` // owner | readwrite | readonly | custom | none
 }
 
 type PermissionMatrix struct {
@@ -207,4 +237,35 @@ type ProgressEvent struct {
 	Message   string `json:"message"`
 	Done      bool   `json:"done"`
 	Error     bool   `json:"error"`
+}
+
+// SchemaInfo es un esquema de una base con sus tablas/vistas (Tables nunca es nil).
+type SchemaInfo struct {
+	Name   string   `json:"name"`
+	Owner  string   `json:"owner"`
+	Tables []string `json:"tables"`
+	System bool     `json:"system"`
+}
+
+// ObjectGrant son los privilegios de un login sobre un esquema (table vacío) o una tabla.
+type ObjectGrant struct {
+	Login      string   `json:"login"`
+	Schema     string   `json:"schema"`
+	Table      string   `json:"table"`
+	Privileges []string `json:"privileges"` // SELECT | INSERT | UPDATE | DELETE | EXECUTE | ALTER
+}
+
+type ObjectGrantRequest struct {
+	Login      string   `json:"login"`
+	Schema     string   `json:"schema"`
+	Table      string   `json:"table"`
+	Privileges []string `json:"privileges"`
+}
+
+// ConnectionUser es un usuario con el que se puede armar una cadena de conexión a una base.
+type ConnectionUser struct {
+	Login       string `json:"login"`
+	Level       string `json:"level"`
+	IsRoot      bool   `json:"isRoot"`
+	HasPassword bool   `json:"hasPassword"`
 }
