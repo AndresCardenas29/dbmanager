@@ -1,30 +1,43 @@
 name: build
 
+# Compila Andres Tools para Windows, macOS y Linux.
+# - push a main / pull request: compila, prueba y deja los ejecutables como artifacts.
+# - tag v* (p. ej. v1.0.0): además publica una Release de GitHub con los ejecutables.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - name: Windows (amd64)
+            os: windows-latest
             platform: windows/amd64
             artifact: andres-tools-windows-amd64
-            path: build/bin/andres-tools.exe
-            extra: ""
-          - os: macos-latest
+            extra: "-nsis"
+          - name: macOS (universal)
+            os: macos-latest
             platform: darwin/universal
             artifact: andres-tools-macos-universal
-            path: build/bin/andres-tools.app
             extra: ""
-          - os: ubuntu-24.04
+          - name: Linux (amd64)
+            os: ubuntu-24.04
             platform: linux/amd64
             artifact: andres-tools-linux-amd64
-            path: build/bin/andres-tools
             extra: "-tags webkit2_41"
     runs-on: ${{ matrix.os }}
     steps:
@@ -37,25 +50,70 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Dependencias de Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
+      - name: NSIS (instalador de Windows)
+        if: runner.os == 'Windows'
+        run: choco install nsis -y --no-progress
+
       - name: Instalar Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
 
+      # -short omite las pruebas que compilan y lanzan el ejecutable; las de integración
+      # (Docker) usan el tag "integration" y no se ejecutan aquí.
       - name: Pruebas unitarias
-        run: go test ./...
+        run: go test -short ./...
 
       - name: Compilar
         run: wails build -clean -platform ${{ matrix.platform }} ${{ matrix.extra }}
 
+      - name: Empaquetar Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/bin/andres-tools.exe dist/andres-tools-windows-amd64.exe
+          Get-ChildItem build/bin -Filter *installer*.exe | ForEach-Object { Copy-Item $_.FullName dist/andres-tools-windows-amd64-installer.exe }
+
       - name: Empaquetar macOS
         if: runner.os == 'macOS'
-        run: cd build/bin && ditto -c -k --keepParent andres-tools.app andres-tools-macos.zip
+        run: |
+          mkdir -p dist
+          cd build/bin && ditto -c -k --keepParent andres-tools.app ../../dist/andres-tools-macos-universal.zip
+
+      - name: Empaquetar Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist
+          chmod +x build/bin/andres-tools
+          tar -czf dist/andres-tools-linux-amd64.tar.gz -C build/bin andres-tools
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ runner.os == 'macOS' && 'build/bin/andres-tools-macos.zip' || matrix.path }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publicar release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Andres Tools ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/*
