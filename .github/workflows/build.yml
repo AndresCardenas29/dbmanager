@@ -64,13 +64,14 @@ jobs:
       - name: Instalar Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
 
+      - name: Compilar
+        run: wails build -clean -platform ${{ matrix.platform }} ${{ matrix.extra }}
+
+      # Después de compilar: el paquete principal embebe frontend/dist.
       # -short omite las pruebas que compilan y lanzan el ejecutable; las de integración
       # (Docker) usan el tag "integration" y no se ejecutan aquí.
       - name: Pruebas unitarias
-        run: go test -short ./...
-
-      - name: Compilar
-        run: wails build -clean -platform ${{ matrix.platform }} ${{ matrix.extra }}
+        run: go test -short ${{ matrix.extra == '-tags webkit2_41' && '-tags webkit2_41' || '' }} ./...
 
       - name: Empaquetar Windows
         if: runner.os == 'Windows'

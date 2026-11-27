@@ -667,11 +667,22 @@ func TestXVal_Negative(t *testing.T) {
 				t.Errorf("%q: %v", pw, err)
 				continue
 			}
+			// Los JDK recientes rechazan contraseñas no ASCII en PKCS#12 con PBES2 ("Password is not ASCII"):
+			// es una limitación de keytool, no del archivo generado, así que solo se registra.
+			jdkNoASCII := func(out string) bool { return strings.Contains(out, "Password is not ASCII") }
 			if !res.Verification.KeytoolOK {
-				t.Errorf("keytool no abre con la contraseña %q: %s", pw, res.Verification.KeytoolOutput)
+				if jdkNoASCII(res.Verification.KeytoolOutput) {
+					t.Logf("LIMITACIÓN DEL JDK: este keytool no acepta la contraseña no ASCII %q", pw)
+				} else {
+					t.Errorf("keytool no abre con la contraseña %q: %s", pw, res.Verification.KeytoolOutput)
+				}
 			}
 			if o, err := xrun(t, []string{"XPW=" + pw}, kt, "-list", "-keystore", f.out, "-storetype", "PKCS12", "-storepass:env", "XPW"); err != nil {
-				t.Errorf("keytool externo con %q: %v %s", pw, err, o)
+				if jdkNoASCII(o) {
+					t.Logf("LIMITACIÓN DEL JDK (keytool externo) con %q", pw)
+				} else {
+					t.Errorf("keytool externo con %q: %v %s", pw, err, o)
+				}
 			}
 			if o, err := xrun(t, []string{"XPW=" + pw}, ossl, "pkcs12", "-in", f.out, "-nokeys", "-passin", "env:XPW"); err != nil {
 				// openssl en Windows convierte el entorno desde la página de códigos ANSI, no UTF-8: no es concluyente
